@@ -1,0 +1,6 @@
+WARNING: cannot parse georeference: ''. Using default values. 
+PASS CARLA map parser: 824 waypoints, 16 topology links, both loop directions connected.
+PASS authored building footprints clear all sampled driving centerlines by vehicle half-width.
+PASS OBJ load and face orientation: 8724 triangles; positive signed volume.
+PASS Scenic 3.1.1 compilation and sampling: three seeds, both parking densities, 45/168 actors.
+NOT TESTED: CARLA server execution, cooked mesh availability, Unreal import, physics, control, collisions.

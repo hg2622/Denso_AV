@@ -1,0 +1,717 @@
+{
+ "SM_Mall01": {
+  "path": "/Game/Carla/Static/Building/SM_Mall01.SM_Mall01",
+  "size": [
+   41.51,
+   45.46,
+   11.55
+  ],
+  "center": [
+   -12.34,
+   -19.72,
+   5.76
+  ]
+ },
+ "SM_Mall02": {
+  "path": "/Game/Carla/Static/Building/SM_Mall02.SM_Mall02",
+  "size": [
+   41.51,
+   45.46,
+   11.55
+  ],
+  "center": [
+   -1.19,
+   -6.24,
+   5.76
+  ]
+ },
+ "SM_Apartment01_1": {
+  "path": "/Game/Carla/Static/Building/SM_Apartment01_1.SM_Apartment01_1",
+  "size": [
+   8.35,
+   12.16,
+   9.3
+  ],
+  "center": [
+   0.44,
+   0.07,
+   5.15
+  ]
+ },
+ "SM_Apartment02_1": {
+  "path": "/Game/Carla/Static/Building/SM_Apartment02_1.SM_Apartment02_1",
+  "size": [
+   12.09,
+   9.39,
+   7.63
+  ],
+  "center": [
+   0.27,
+   0.03,
+   3.8
+  ]
+ },
+ "SM_Church01": {
+  "path": "/Game/Carla/Static/Building/SM_Church01.SM_Church01",
+  "size": [
+   12.72,
+   10.8,
+   16.1
+  ],
+  "center": [
+   0.52,
+   1.98,
+   8.01
+  ]
+ },
+ "SM_House01": {
+  "path": "/Game/Carla/Static/Building/SM_House01.SM_House01",
+  "size": [
+   9.64,
+   12.08,
+   12.65
+  ],
+  "center": [
+   0.0,
+   -0.0,
+   6.32
+  ]
+ },
+ "SM_House06": {
+  "path": "/Game/Carla/Static/Building/SM_House06.SM_House06",
+  "size": [
+   22.41,
+   10.01,
+   4.72
+  ],
+  "center": [
+   5.58,
+   -3.66,
+   2.37
+  ]
+ },
+ "SM_Block08": {
+  "path": "/Game/Carla/Static/Building/SM_Block08.SM_Block08",
+  "size": [
+   11.9,
+   29.56,
+   11.08
+  ],
+  "center": [
+   -0.02,
+   0.27,
+   5.52
+  ]
+ },
+ "SM_Mansion01": {
+  "path": "/Game/Carla/Static/Building/SM_Mansion01.SM_Mansion01",
+  "size": [
+   9.98,
+   18.02,
+   9.96
+  ],
+  "center": [
+   -1.89,
+   0.12,
+   5.04
+  ]
+ },
+ "SM_TerracedHouse_1": {
+  "path": "/Game/Carla/Static/Building/SM_TerracedHouse_1.SM_TerracedHouse_1",
+  "size": [
+   11.75,
+   10.49,
+   6.88
+  ],
+  "center": [
+   0.0,
+   -0.04,
+   3.43
+  ]
+ },
+ "SM_Bloc04": {
+  "path": "/Game/Carla/Static/Building/SM_Bloc04.SM_Bloc04",
+  "size": [
+   16.63,
+   17.0,
+   17.44
+  ],
+  "center": [
+   4.1,
+   4.2,
+   8.81
+  ]
+ },
+ "SM_Skycraper01": {
+  "path": "/Game/Carla/Static/Building/SM_Skycraper01.SM_Skycraper01",
+  "size": [
+   10.0,
+   10.0,
+   31.0
+  ],
+  "center": [
+   0.3,
+   0.0,
+   -14.5
+  ]
+ },
+ "SM_GasStation01": {
+  "path": "/Game/Carla/Static/Building/SM_GasStation01.SM_GasStation01",
+  "size": [
+   55.11,
+   30.11,
+   11.1
+  ],
+  "center": [
+   -8.17,
+   0.83,
+   5.12
+  ]
+ },
+ "SM_Garage01": {
+  "path": "/Game/Carla/Static/Building/SM_Garage01.SM_Garage01",
+  "size": [
+   5.9,
+   7.26,
+   4.28
+  ],
+  "center": [
+   0.02,
+   -0.32,
+   2.04
+  ]
+ },
+ "SM_Kiosk01": {
+  "path": "/Game/Carla/Static/Building/SM_Kiosk01.SM_Kiosk01",
+  "size": [
+   1.63,
+   1.65,
+   3.25
+  ],
+  "center": [
+   0.0,
+   0.01,
+   1.62
+  ]
+ },
+ "SM_Maple_M_v1": {
+  "path": "/Game/Carla/Static/Vegetation/Trees/SM_Maple_M_v1.SM_Maple_M_v1",
+  "size": [
+   8.14,
+   7.53,
+   8.78
+  ],
+  "center": [
+   -0.12,
+   -0.12,
+   4.39
+  ]
+ },
+ "SM_Maple_L_v1": {
+  "path": "/Game/Carla/Static/Vegetation/Trees/SM_Maple_L_v1.SM_Maple_L_v1",
+  "size": [
+   13.29,
+   13.52,
+   16.65
+  ],
+  "center": [
+   0.82,
+   0.15,
+   8.33
+  ]
+ },
+ "SM_Acer_02": {
+  "path": "/Game/Carla/Static/Vegetation/Trees/SM_Acer_02.SM_Acer_02",
+  "size": [
+   7.68,
+   9.03,
+   19.28
+  ],
+  "center": [
+   -0.13,
+   0.7,
+   9.64
+  ]
+ },
+ "SM_Beech": {
+  "path": "/Game/Carla/Static/Vegetation/Trees/SM_Beech.SM_Beech",
+  "size": [
+   16.05,
+   15.33,
+   18.82
+  ],
+  "center": [
+   0.47,
+   0.12,
+   9.41
+  ]
+ },
+ "SM_TreePine_1": {
+  "path": "/Game/Carla/Static/Vegetation/Trees/SM_TreePine_1.SM_TreePine_1",
+  "size": [
+   7.57,
+   7.36,
+   12.0
+  ],
+  "center": [
+   0.14,
+   0.12,
+   5.51
+  ]
+ },
+ "SM_TreePine_2": {
+  "path": "/Game/Carla/Static/Vegetation/Trees/SM_TreePine_2.SM_TreePine_2",
+  "size": [
+   8.1,
+   7.85,
+   12.0
+  ],
+  "center": [
+   0.14,
+   0.1,
+   5.51
+  ]
+ },
+ "SM_WhiteAsh_02_v1_TreePot": {
+  "path": "/Game/Carla/Static/Vegetation/Trees/SM_WhiteAsh_02_v1_TreePot.SM_WhiteAsh_02_v1_TreePot",
+  "size": [
+   15.65,
+   17.26,
+   17.51
+  ],
+  "center": [
+   -0.61,
+   -0.05,
+   8.56
+  ]
+ },
+ "SM_Bush_L_v1": {
+  "path": "/Game/Carla/Static/Vegetation/Bushes/SM_Bush_L_v1.SM_Bush_L_v1",
+  "size": [
+   3.59,
+   4.27,
+   3.17
+  ],
+  "center": [
+   0.56,
+   0.05,
+   0.86
+  ]
+ },
+ "SM_Hedge_01": {
+  "path": "/Game/Carla/Static/Vegetation/Bushes/SM_Hedge_01.SM_Hedge_01",
+  "size": [
+   1.61,
+   1.3,
+   2.22
+  ],
+  "center": [
+   0.01,
+   -0.0,
+   0.88
+  ]
+ },
+ "SM_Awning01": {
+  "path": "/Game/Carla/Static/Building/Awning/SM_Awning01.SM_Awning01",
+  "size": [
+   2.18,
+   1.13,
+   1.34
+  ],
+  "center": [
+   0.0,
+   0.55,
+   0.67
+  ]
+ },
+ "SM_Awning02": {
+  "path": "/Game/Carla/Static/Building/Awning/SM_Awning02.SM_Awning02",
+  "size": [
+   4.47,
+   1.95,
+   1.77
+  ],
+  "center": [
+   0.0,
+   0.97,
+   -0.82
+  ]
+ },
+ "SM_Parking_v01_merged": {
+  "path": "/Game/Carla/Static/Building/Parking/SM_Parking_v01_merged.SM_Parking_v01_merged",
+  "size": [
+   20.5,
+   40.49,
+   25.69
+  ],
+  "center": [
+   5.01,
+   -15.02,
+   9.35
+  ]
+ },
+ "SM_ParkWall_01_v1": {
+  "path": "/Game/Carla/Static/Wall/SM_ParkWall_01_v1.SM_ParkWall_01_v1",
+  "size": [
+   1.2,
+   7.1,
+   3.83
+  ],
+  "center": [
+   0.0,
+   3.45,
+   1.06
+  ]
+ },
+ "SM_Fence_01_v1": {
+  "path": "/Game/Carla/Static/Fence/SM_Fence_01_v1.SM_Fence_01_v1",
+  "size": [
+   0.16,
+   7.5,
+   1.5
+  ],
+  "center": [
+   0.0,
+   3.75,
+   0.75
+  ]
+ },
+ "SM_Guardrail_02": {
+  "path": "/Game/Carla/Static/GuardRail/SM_Guardrail_02.SM_Guardrail_02",
+  "size": [
+   3.11,
+   0.31,
+   0.77
+  ],
+  "center": [
+   1.56,
+   -0.13,
+   0.38
+  ]
+ },
+ "SM_parkLightV2": {
+  "path": "/Game/Carla/Static/Pole/SM_Lights/SM_parkLightV2.SM_parkLightV2",
+  "size": [
+   1.39,
+   0.48,
+   4.47
+  ],
+  "center": [
+   0.0,
+   0.0,
+   2.23
+  ]
+ },
+ "SM_Bollard01": {
+  "path": "/Game/Carla/Static/Pole/SM_Lights/SM_Bollard01.SM_Bollard01",
+  "size": [
+   0.16,
+   0.16,
+   0.68
+  ],
+  "center": [
+   0.0,
+   0.0,
+   0.34
+  ]
+ },
+ "SM_Plane": {
+  "path": "/Game/Carla/Static/Other/SM_Plane.SM_Plane",
+  "size": [
+   0.2,
+   12.0,
+   10.0
+  ],
+  "center": [
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "SM_town03_SM_terrain01": {
+  "path": "/Game/Carla/Static/Bridge/SM_town03_SM_terrain01.SM_town03_SM_terrain01",
+  "size": [
+   83.13,
+   155.36,
+   2.1
+  ],
+  "center": [
+   -10.71,
+   49.72,
+   0.05
+  ]
+ },
+ "SM_town03_SM_terrain02": {
+  "path": "/Game/Carla/Static/SideWalk/SM_town03_SM_terrain02.SM_town03_SM_terrain02",
+  "size": [
+   48.78,
+   40.77,
+   9.99
+  ],
+  "center": [
+   23.77,
+   11.01,
+   2.56
+  ]
+ },
+ "SM_town03_SM_terrain03": {
+  "path": "/Game/Carla/Static/SideWalk/SM_town03_SM_terrain03.SM_town03_SM_terrain03",
+  "size": [
+   48.62,
+   34.93,
+   9.99
+  ],
+  "center": [
+   -9.14,
+   -11.91,
+   -0.82
+  ]
+ },
+ "SM_Road_Grass_Town03_1": {
+  "path": "/Game/Carla/Static/SideWalk/SideWalk/Town03_SideWalk/SM_Road_Grass_Town03_1.SM_Road_Grass_Town03_1",
+  "size": [
+   22.55,
+   14.84,
+   3.39
+  ],
+  "center": [
+   0.0,
+   -0.41,
+   0.0
+  ]
+ },
+ "SM_Road_Grass_Town03_2": {
+  "path": "/Game/Carla/Static/SideWalk/SideWalk/Town03_SideWalk/SM_Road_Grass_Town03_2.SM_Road_Grass_Town03_2",
+  "size": [
+   22.32,
+   14.02,
+   3.39
+  ],
+  "center": [
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "SM_Square_132": {
+  "path": "/Game/Carla/Static/Ground/Town03/SM_Square_132.SM_Square_132",
+  "size": [
+   26.91,
+   74.46,
+   0.01
+  ],
+  "center": [
+   226.54,
+   37.23,
+   0.15
+  ]
+ },
+ "SM_SideWalk_282": {
+  "path": "/Game/Carla/Static/Ground/Town03/SM_SideWalk_282.SM_SideWalk_282",
+  "size": [
+   20.28,
+   10.09,
+   0.15
+  ],
+  "center": [
+   -60.17,
+   85.04,
+   0.08
+  ]
+ },
+ "SM_Parkingmeter": {
+  "path": "/Game/Carla/Static/Static/SM_Parkingmeter.SM_Parkingmeter",
+  "size": [
+   0.13,
+   0.17,
+   1.32
+  ],
+  "center": [
+   0.0,
+   0.0,
+   0.66
+  ]
+ },
+ "SM_BikeParking": {
+  "path": "/Game/Carla/Static/Static/SM_BikeParking.SM_BikeParking",
+  "size": [
+   4.44,
+   1.35,
+   0.87
+  ],
+  "center": [
+   1.75,
+   0.11,
+   0.43
+  ]
+ },
+ "SM_Block03Floor": {
+  "path": "/Game/Carla/Static/Building/SM_Block03Floor.SM_Block03Floor",
+  "size": [
+   5.1,
+   7.69,
+   2.57
+  ],
+  "center": [
+   -0.0,
+   0.0,
+   7.46
+  ]
+ },
+ "SM_ColumnTunnel": {
+  "path": "/Game/Carla/Static/Wall/SM_ColumnTunnel.SM_ColumnTunnel",
+  "size": [
+   1.5,
+   4.5,
+   7.3
+  ],
+  "center": [
+   0.0,
+   -0.05,
+   2.65
+  ]
+ },
+ "SM_Highway_Wall": {
+  "path": "/Game/Carla/Static/Wall/SM_Highway_Wall.SM_Highway_Wall",
+  "size": [
+   1.2,
+   15.0,
+   3.61
+  ],
+  "center": [
+   0.0,
+   7.5,
+   1.69
+  ]
+ },
+ "SM_City_Wall_01_v1": {
+  "path": "/Game/Carla/Static/Wall/SM_City_Wall_01_v1.SM_City_Wall_01_v1",
+  "size": [
+   1.0,
+   15.0,
+   3.73
+  ],
+  "center": [
+   0.0,
+   7.5,
+   1.64
+  ]
+ },
+ "SM_Pole_Add_02": {
+  "path": "/Game/Carla/Static/Pole/SM_Pole_Add_02.SM_Pole_Add_02",
+  "size": [
+   4.0,
+   9.61,
+   12.83
+  ],
+  "center": [
+   -0.05,
+   -4.52,
+   6.41
+  ]
+ },
+ "SM_ElectricPole01": {
+  "path": "/Game/Carla/Static/Pole/PoweLine/SM_ElectricPole01.SM_ElectricPole01",
+  "size": [
+   1.11,
+   1.11,
+   7.61
+  ],
+  "center": [
+   0.04,
+   -0.02,
+   3.8
+  ]
+ },
+ "SM_Flag_Tall": {
+  "path": "/Game/Carla/Static/Pole/Materials/Flags/SM_Flag_Tall.SM_Flag_Tall",
+  "size": [
+   2.02,
+   1.14,
+   7.83
+  ],
+  "center": [
+   0.0,
+   0.1,
+   3.92
+  ]
+ },
+ "SM_Block03BaseFloor": {
+  "path": "/Game/Carla/Static/Building/SM_Block03BaseFloor.SM_Block03BaseFloor",
+  "size": [
+   5.42,
+   7.17,
+   6.17
+  ],
+  "center": [
+   0.0,
+   -0.26,
+   3.09
+  ]
+ },
+ "Plane_LineMarking": {
+  "path": "/Game/Carla/Static/RoadLine/Plane_LineMarking.Plane_LineMarking",
+  "size": [
+   1.0,
+   1.0,
+   0.0
+  ],
+  "center": [
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "SM_BassicTrafficLineCube_trafficlineCube": {
+  "path": "/Game/Carla/Static/RoadLine/SM_BassicTrafficLineCube_trafficlineCube.SM_BassicTrafficLineCube_trafficlineCube",
+  "size": [
+   0.12,
+   0.12,
+   0.01
+  ],
+  "center": [
+   0.06,
+   0.0,
+   0.0
+  ]
+ },
+ "St_Road_TileRoad_LaneMarkingBroken": {
+  "path": "/Game/Carla/Static/RoadLine/St_Road_TileRoad_LaneMarkingBroken.St_Road_TileRoad_LaneMarkingBroken",
+  "size": [
+   8.2,
+   0.43,
+   0.0
+  ],
+  "center": [
+   -0.02,
+   0.0,
+   0.03
+  ]
+ },
+ "SM_RoadTown03_123solid": {
+  "path": "/Game/Carla/Static/RoadLine/SM_RoadTown03_123solid.SM_RoadTown03_123solid",
+  "size": [
+   27.81,
+   52.38,
+   0.0
+  ],
+  "center": [
+   -124.64,
+   -124.43,
+   0.0
+  ]
+ },
+ "St_Road_Curve_LaneMarking": {
+  "path": "/Game/Carla/Static/RoadLine/St_Road_Curve_LaneMarking.St_Road_Curve_LaneMarking",
+  "size": [
+   21.02,
+   20.91,
+   0.0
+  ],
+  "center": [
+   10.23,
+   10.22,
+   0.03
+  ]
+ }
+}

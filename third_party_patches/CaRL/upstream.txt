@@ -1,0 +1,2 @@
+url: https://github.com/autonomousvision/CaRL.git
+commit: 2677d1477193ecb5eb41ad8d7e4eda78057fd8a9

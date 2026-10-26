@@ -1,0 +1,2 @@
+url: https://github.com/AFARI-Research/WA-JEPA.git
+commit: bec29660f5ea46ac73db8e2d0c33c8d1a72c23ad

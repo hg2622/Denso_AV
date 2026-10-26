@@ -1,0 +1,2 @@
+url: https://github.com/Thinklab-SJTU/Bench2Drive.git
+commit: 7ec25d1c9f7522d923ce5f3420986cef1cb2d956

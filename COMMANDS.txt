@@ -1,0 +1,498 @@
+CARLA + BENCH2DRIVE — COMMAND CHEAT SHEET
+=========================================
+Everything lives in ~/carla_ws. Python env: b2d (~/miniconda3/envs/b2d/bin/python).
+Use separate terminals for server / driving / traffic.
+
+0. QUICK REFERENCE — ONE LINE PER METHOD                                            (details in the numbered sections)
+--------------------------------------------------------------------------------------------------------------------
+LIVE DRIVE (open world, random route, viewer)                     | BENCH2DRIVE EVAL (scored episode, route id e.g. 24211)
+Terminal 1 first:  bash ~/carla_ws/carla_server.sh                 | no server needed: each evaluator starts + stops its own CARLA
+                   (QUALITY=Low bash carla_server.sh for pi0/MoE)  |
+                                                                   |
+You (keyboard)   bash drive.sh --map Town04                        | bash run_human_eval.sh 24211         score: show_score.sh ./eval_human
+TCP (B2D ref)    -                                                 | bash run_tcp_eval.sh leaderboard/data/bench2drive220.xml 24211 ./eval_220
+BridgeDrive      bash bd_drive.sh --map Town04                     | bash run_bridgedrive_eval.sh 24211   score: show_bd_score.sh 24211
+CaRL (PPO)       bash carl_drive.sh --map Town04                   | bash run_carl_eval.sh 24211          (result json printed; CaRL/CARLA/results/eval_b2d/)
+Roach            bash carl_drive.sh --map Town04 --model Roach_00  | bash run_carl_eval.sh 24211 Roach_00
+Think2Drive      bash t2d_drive.sh Town04 3   (NO carla_server.sh) | -  (own pipeline, free run only)
+SimLingo (VLA)   bash sl_drive.sh --map Town10HD --green-lights    | bash run_simlingo_eval.sh 24211      score: show_sl_score.sh 24211
+Drive-pi0 (VLA)  bash pi0_drive.sh --map Town10HD --green-lights   | bash run_pi0_eval.sh 24211           score: show_pi0_score.sh 24211
+DriveMoE (VLA)   bash pi0_drive.sh --model drivemoe --map Town10HD | bash run_pi0_eval.sh 24211 drivemoe  score: show_pi0_score.sh 24211 drivemoe
+                                                                   |
+Traffic for any live drive (2nd terminal): bash traffic_chaos.sh 30 20 150    Stop everything: bash stop_all.sh
+Scenario knobs for any eval:  SET="HighwayCutIn.no_cut_in=1" EXTEND=250 bash run_<x>_eval.sh 2286      (knob list in §9)
+Record a video of any eval:   bash record_hero.py --port <evaluator port> --out X.mp4   (BridgeDrive/SimLingo 8848, pi0 8858, CaRL 2000)
+Speed:  CaRL/Roach real time | BridgeDrive ~0.3 s/step | Drive-pi0 ~0.2 s/tick, DriveMoE ~0.45 | SimLingo ~0.3 s/step (sentence cached, default), 1 s with SL_LANG_EVERY=1, 0.23 s with SL_LANG=0
+All commands assume: cd ~/carla_ws
+
+
+1. NORMAL DRIVE (free roam, no scoring)
+---------------------------------------
+Terminal 1 — start the server (wait ~30 s):
+    bash ~/carla_ws/carla_server.sh
+
+Terminal 2 — open the driving window:
+    bash ~/carla_ws/drive.sh
+    bash ~/carla_ws/drive.sh --map Town04 --res 1920x1080 --filter vehicle.dodge.charger_2020
+
+MIRRORS (default on): left and right rear-view mirrors are built into the driving window (bottom-left / bottom-right
+       insets, mirror-flipped like real glass). MIRRORS=0 bash drive.sh ... hides them. views.sh is still there if you
+       want them in a separate window / other views (rear, bev, chase).
+WHEEL (default off): MOUSE_STEER=1 bash drive.sh ... draws a click-and-drag steering wheel at the bottom (900 deg lock-to-lock,
+       self-centres on release, right mouse button = brake). Tuning: WHEEL_LOCK_DEG=540, WHEEL_RETURN_DEG_S=180.
+Keys:  W/S throttle/brake   A/D steer   Q reverse   Space handbrake
+       P autopilot   TAB camera view (chase / hood / side / top / low-rear)   ` next sensor (depth/semantic/lidar...)
+       C weather   N map layers   Backspace respawn at random spot   H help   ESC quit
+
+Maps:  Town12, Town13  = 10x10 km, highway ring (GTA-style, ~60-90 s to load)
+       Town04          = highway loop through mountains (best for speed)
+       Town06          = long straight highways
+       Town10HD        = dense downtown (default)
+       Town01..07, Town11, Town15 also available
+
+Cars:  --filter vehicle.dodge.charger_2020 | vehicle.mercedes.coupe_2020 | vehicle.ford.mustang
+       | vehicle.tesla.model3 | vehicle.audi.tt   (Backspace in-window also cycles random cars)
+
+Note: --map loads the map on the server; once loaded, the next drive.sh with the same map is instant.
+
+Second small window with two extra views of your car (works with free roam AND Bench2Drive episodes):
+    bash ~/carla_ws/stop_traffic.sh         # stop traffic/chaos only (Ctrl-C in its terminal also works; press twice to force)
+    bash ~/carla_ws/views.sh                # left + right side mirrors
+    bash ~/carla_ws/views.sh rear bev       # any two of: left right rear front bev chase
+ESC in that window or Ctrl+C closes it.
+
+
+2. DRIVE WITH CARS AND PEOPLE
+-----------------------------
+Start server + driving window first (steps above), THEN in Terminal 3:
+    bash ~/carla_ws/traffic.sh 60 40                   # 60 cars, 40 pedestrians within 250 m of you
+    bash ~/carla_ws/traffic.sh 100 60 400 --lights     # 100 cars, 60 people, 400 m radius, headlights on
+    (args: N_CARS  N_WALKERS  RADIUS_M  [--lights])
+
+    bash ~/carla_ws/traffic_chaos.sh 60 50 200
+        # HAZARD mode: cars are spawned in a RING around you (ahead/behind, your lane + neighbour lanes + opposite lanes), not
+        # at the map's spawn points. Inside --chaos-radius (100 m) EVERY same-direction car switches to the aggressive profile
+        # (speeds up to 2x limit, tailgates, runs lights); the ones behind/beside you overtake and cut in front of you as soon as
+        # their lane is open for 25 m and yours for 20 m; cars ahead brake-check; pedestrians run across. Outside: normal.
+        # Prints "[chaos] car N overtaking / cuts in front of you / brakes hard", "pedestrian N runs across" as they happen.
+        # Expect contact: NPCs avoid each other but cut-ins are deliberately tight, and a 3 Hz BridgeDrive reacts late.
+        # Options: --chaos-radius 100  --max-actors 99  --max-walkers 3     Stop: Ctrl-C or bash ~/carla_ws/stop_traffic.sh
+NPCs spawn AROUND YOUR CAR and are topped up every 5 s as you drive away, so traffic follows you.
+Ctrl+C in Terminal 3 removes all NPCs.
+"Spawn failed because of collision at spawn position" = that spawn point was taken; harmless.
+NPC driving is CARLA's built-in Traffic Manager (rule-based, same thing as the P key) — competent, not human-like.
+
+Check who is hero / how many NPCs are near you (while driving):
+    ~/miniconda3/envs/b2d/bin/python ~/carla_ws/who_is_hero.py
+
+
+3. RANDOM MAP / SPECIFIC MAP
+----------------------------
+Specific map:
+    bash ~/carla_ws/drive.sh --map Town04
+
+Random map:
+    bash ~/carla_ws/drive.sh --map $(shuf -n1 -e Town01 Town02 Town03 Town04 Town05 Town06 Town07 Town10HD Town11 Town12 Town13 Town15)
+
+Random spawn point on the current map: press Backspace in the driving window.
+
+
+4. BENCH2DRIVE EPISODES — DRIVE YOURSELF (scored)
+-------------------------------------------------
+No server needed — the evaluator starts its own CARLA (~30 s small towns, ~90 s Town12).
+    cd ~/carla_ws
+    bash run_human_eval.sh 25378        # specific route (dev10 set)
+    bash run_human_eval.sh random       # random route from the 10 dev routes
+    bash run_human_eval.sh random220    # random route from the full 220-route benchmark
+    bash run_human_eval.sh PedestrianCrossing   # random route of a given scenario TYPE (any of the 44 below)
+    bash run_human_eval.sh HighwayCutIn
+
+Scenario types (5 routes each):
+  pedestrians: PedestrianCrossing DynamicObjectCrossing ParkingCrossingPedestrian VehicleTurningRoutePedestrian CrossingBicycleFlow
+  fast/highway: HighwayCutIn HighwayExit MergerIntoSlowTraffic InterurbanActorFlow InterurbanAdvancedActorFlow SequentialLaneChange ControlLoss HardBreakRoute
+  junctions: SignalizedJunctionLeftTurn SignalizedJunctionRightTurn NonSignalizedJunctionLeftTurn NonSignalizedJunctionRightTurn
+             OppositeVehicleRunningRedLight OppositeVehicleTakingPriority BlockedIntersection Vanilla*Turn* EnterActorFlow *LeftTurnEnterFlow
+  obstacles: Accident AccidentTwoWays ConstructionObstacle(TwoWays) ParkedObstacle(TwoWays) HazardAtSideLane(TwoWays) InvadingTurn
+  parking/doors: ParkingExit ParkingCutIn StaticCutIn VehicleOpensDoorTwoWays   emergency: YieldToEmergencyVehicle
+Browse routes:  ~/miniconda3/envs/b2d/bin/python ~/carla_ws/list_routes.py "" Highway
+
+dev10 route ids: 3514 3255 26405 25381 25378 25424 2091 27494 17569 28198
+Full 220 list:   grep -oE 'route id="[0-9]+" town="[^"]+"' ~/carla_ws/Bench2Drive/leaderboard/data/bench2drive220.xml
+Route from the 220 set by id:
+    bash run_human_eval.sh 1711 leaderboard/data/bench2drive220.xml
+
+In the window: follow the GREEN arrows to the RED dot. HUD shows speed / distance / time.
+Keys: W full throttle, Shift+W half throttle, A/D steer, S brake, Space handbrake, Q reverse.
+Wheel: MOUSE_STEER=1 bash run_human_eval.sh ... adds the same on-screen steering wheel as free roam (off by default).
+Side mirrors are shown as insets in the bottom corners (MIRRORS=0 bash run_human_eval.sh ... to hide them).
+Episode ends at the red dot, on timeout, or if blocked 180 s. Score prints automatically.
+
+Keep results of several runs (default save dir ./eval_human is overwritten each run):
+    bash run_human_eval.sh 25378 leaderboard/data/drivetransformer_bench2drive_dev10.xml ./eval_human_try2
+
+
+4b. LONG EPISODES (Leaderboard 2.0 routes: 5-11 km, 35-125 chained scenarios, 10-25 min)
+-------------------------------------------------------------------------------------
+    cd ~/carla_ws
+    bash run_human_eval.sh 1  leaderboard/data/routes_validation.xml ./eval_long   # Town13 5.7 km, pedestrians + parking cut-ins
+    bash run_human_eval.sh 2  leaderboard/data/routes_validation.xml ./eval_long   # Town13 7.8 km
+    bash run_human_eval.sh 16 leaderboard/data/routes_validation.xml ./eval_long   # Town13 8.0 km, control loss / invading turns
+    bash run_human_eval.sh 3  leaderboard/data/routes_validation.xml ./eval_long   # Town13 11.3 km (longest)
+    bash run_human_eval.sh 0  leaderboard/data/routes_devtest.xml    ./eval_long   # Town12 7.1 km
+    bash run_human_eval.sh 75 leaderboard/data/routes_training.xml   ./eval_long   # Town12 10 km, ambulances + highway cut-ins
+List with lengths:  ~/miniconda3/envs/b2d/bin/python ~/carla_ws/route_lengths.py ~/carla_ws/Bench2Drive/leaderboard/data/routes_validation.xml
+Score:              bash ~/carla_ws/show_score.sh ./eval_long
+
+
+4c. TCP DRIVES ITSELF IN AN OPEN WORLD (no scoring)
+--------------------------------------------------
+    bash ~/carla_ws/carla_server.sh -windowed          # terminal 1 (windowed so you can watch; spectator follows the car)
+    bash ~/carla_ws/tcp_drive.sh --map Town10HD --max-speed 4      # terminal 2
+    bash ~/carla_ws/traffic.sh 40 30                   # terminal 3 (optional NPCs; TCP's car is the hero)
+It plans a route to a random destination (green dots -> red dot), drives it, then picks a new one.
+Bench2Drive's TCP clamps itself to ~5 km/h; --max-speed 4 (m/s) makes it drive ~15 km/h. Uncapped it crashes.
+Runs ~0.3x real time. If it gets stuck on something, Ctrl+C and rerun (new random spawn).
+
+
+4d. CLASSIC BENCHMARKS FROM OTHER PAPERS: Town05 Long / Town05 Short / Longest6 (converted)
+-----------------------------------------------------------------------------------------
+These are the TransFuser / TCP / InterFuser / LAV era benchmarks (CARLA Leaderboard 1.0 routes), converted
+to this leaderboard's 2.0 format by convert_lb1_routes.py. Same runner, same scoring.
+    bash run_human_eval.sh 24 leaderboard/data/town05_long.xml  ./eval_t05long   # Town05 Long: 10 routes, ids 16-25, 0.5-2.2 km, 8-28 scenarios each
+    bash run_human_eval.sh 5  leaderboard/data/town05_short.xml ./eval_t05short  # Town05 Short: 32 routes, ids 0-31, ~100-500 m
+    bash run_human_eval.sh 12 leaderboard/data/longest6.xml     ./eval_longest6  # Longest6: 36 routes, ids 0-35, Town01-06, 0.7-3.2 km
+    bash run_tcp_eval.sh leaderboard/data/town05_long.xml 24 ./eval_tcp_t05       # TCP on it
+    ~/miniconda3/envs/b2d/bin/python route_lengths.py Bench2Drive/leaderboard/data/longest6.xml   # list
+Caveats: scenario placement is a faithful-as-possible conversion (same trigger points and 1.0 validity rules,
+2.0 scenario classes: ControlLoss, DynamicObjectCrossing, VehicleTurningRoute, OppositeVehicleRunningRedLight,
+SignalizedJunctionLeft/RightTurn, OppositeVehicleTakingPriority), but 1.0 thinned the dense Town05 scenario
+list by run-time spawn failures while here it is thinned by a 50 m spacing — so numbers are comparable in
+spirit, not paper-exact. Expect "Skipping scenario ... due to setup error" for 1-3 scenarios per route — a junction
+whose geometry does not fit the 2.0 scenario class; the route continues without it (1.0 did the same at spawn).
+Source files: routes_lb1/. Reconvert: python convert_lb1_routes.py <routes.xml> <scenarios.json> <out.xml> [--sampling random]
+
+
+5. BENCH2DRIVE EPISODES — AI BASELINE (TCP agent)
+-------------------------------------------------
+    cd ~/carla_ws
+    bash run_tcp_eval.sh leaderboard/data/drivetransformer_bench2drive_dev10.xml 25378 ./eval_dev10   # one route
+    bash run_tcp_eval.sh leaderboard/data/drivetransformer_bench2drive_dev10.xml "" ./eval_dev10      # all 10
+    bash run_tcp_eval.sh leaderboard/data/bench2drive220.xml "" ./eval_220                            # full benchmark (days)
+Runs at ~0.075x real time (it saves every frame). Frames in Bench2Drive/eval_dev10/RouteScenario_*/{rgb_front,bev,meta}.
+
+
+6. SEE THE SCORE
+----------------
+    bash ~/carla_ws/show_score.sh ./eval_human      # your drives
+    bash ~/carla_ws/show_score.sh ./eval_dev10      # TCP runs
+Raw file: ~/carla_ws/Bench2Drive/<save_dir>/result.json
+
+How it's computed:  Driving Score = Route Completion % x Infraction Penalty
+Penalty multipliers (per event): pedestrian collision x0.50, vehicle x0.60, static x0.65,
+red light x0.70, stop sign x0.80, scenario fail (e.g. not yielding to ambulance) x0.70.
+MinSpeed only penalizes being too slow — going fast costs nothing by itself.
+"FAILURE" in the header just means at least one criterion failed; the route still scores.
+
+
+7. OFFLINE DATASET (no simulator)
+---------------------------------
+    cd ~/carla_ws/data/Bench2Drive-mini
+    tar xzf Accident_Town03_Route156_Weather0.tar.gz   # -> anno/, camera/rgb_front/, lidar/, radar/
+Format: ~/carla_ws/Bench2Drive/docs/anno.md
+
+
+8. STOP / IF SOMETHING IS STUCK
+-------------------------------
+    ESC in the driving window  = stop driving / end the episode (score prints)
+    Ctrl+C in traffic terminal = remove NPCs
+    bash ~/carla_ws/stop_all.sh                          # kill everything (server, evaluator, window, traffic)
+"Invalid session: no stream available" lines at the END of an episode are normal.
+
+=============================
+9. BASELINES: BridgeDrive (ICLR'26 diffusion-bridge planner on LEAD/TFv6)  [BRIDGEDRIVE]
+=============================
+Code: ~/carla_ws/BridgeDrive (plug-in) overlaid on ~/carla_ws/LEAD (pinned commit a41d116); env: conda `lead`.
+Checkpoint: LEAD/outputs/local_training/bridgedrive_k60 -> ~/carla_ws/BridgeDrive/ckpt/bridgedrive_k60 (m2_k60, 628 MB).
+Inputs it takes from CARLA: 3 RGB cams (384x384, FOV 60, -57.5/0/+57.5 deg), 2 LiDARs (360 deg), 4 radars, IMU, GNSS,
+speedometer + route target points. Output: waypoints + target speed -> PID.
+    bash ~/carla_ws/run_bridgedrive_eval.sh 25378      # one Bench2Drive route (starts its own offscreen CARLA on port 8848+)
+    bash ~/carla_ws/run_bridgedrive_eval.sh random     # random one of the 220
+    bash ~/carla_ws/run_bridgedrive_eval.sh all        # full 220-route benchmark (days on this laptop: ~3 agent steps/s)
+    bash ~/carla_ws/show_bd_score.sh 25378             # DS / RC / penalty / infractions
+    bash ~/carla_ws/show_bd_video.sh 25378             # replay what the model saw + planned (debug video, written at route end)
+    bash ~/carla_ws/bd_watch.sh 25857                  # run one episode, record chase cam, play it back at 1x afterwards
+  CUSTOM SCENARIO KNOBS (the scripted NPC's behaviour; makes the score non-comparable to the official benchmark):
+    SET="HighwayCutIn.no_cut_in=1,HighwayCutIn.cut_in_distance=1" EXTEND=250 bash ~/carla_ws/run_bridgedrive_eval.sh 2286
+        # NPC syncs with you up to its cut-in point, then stays in its lane and accelerates away (30 m/s); EXTEND=250 makes the
+        # route continue 250 m past its official end so you can see it (route 2286 is only 106 m).
+    SET="HighwayCutIn.cut_in_distance=5,HighwayCutIn.speed_perc=60" bash ~/carla_ws/run_carl_eval.sh 2286   # harsher cut-in
+    SET="HighwayCutIn.const_meet=1,HighwayCutIn.cut_in_distance=1" EXTEND=250 bash ~/carla_ws/run_bridgedrive_eval.sh 2286
+        # NO sync: at the trigger the NPC picks ONE constant speed (= its distance to the cut-in point x ego speed / ego distance)
+        # so both arrive there together if the ego keeps its speed; holds that speed in its lane, no cut-in, no acceleration.
+    SET="ParkingCutIn.no_cut_in=1" bash ~/carla_ws/run_bridgedrive_eval.sh 24759        # the parked car stays parked (never pulls out)
+    SET="DynamicObjectCrossing.no_cross=1" bash ~/carla_ws/run_bridgedrive_eval.sh 24211   # the pedestrian never steps out
+    SET="DynamicObjectCrossing.no_cross=1,DynamicObjectCrossing.invader=1" bash ~/carla_ws/run_bridgedrive_eval.sh 24211
+        # staged "oncoming lane invader": the pedestrian stays, a red Audi on the opposite lane (invader_dist=70 m ahead, invader_speed=6 m/s)
+        # drifts invader_offset=1.6 m into our lane once the gap is < invader_trigger=60 m (after invader_start=0.5 s, over invader_in=1.5 s),
+        # holds invader_hold=1.5 s, eases back over invader_out=2.5 s. Keep speed + lane = collision; brake or shift right ~1 m = clear.
+        # all knobs: SET="...,DynamicObjectCrossing.invader_offset=2.0,DynamicObjectCrossing.invader_speed=8"   (bash invader_runs.sh runs CaRL/SimLingo/BridgeDrive on it)
+    BUILD YOUR OWN SCENE (capture -> edit in 2D -> drive -> test the models) -- one command:
+        ~/miniconda3/envs/b2d/bin/python ~/carla_ws/scene.py --route 24211 --name myscene --models "carl bridgedrive simlingo"
+          1 CAPTURE  (CARLA ~1 min, then closes): reads the episode's initial scene -> scenes/myscene.json
+                     every vehicle + pedestrian with its real pose and intended speed (cars = lane speed limit, scenario walker = 2 m/s,
+                     its kerb pose reconstructed from the scenario), the lane geometry, the route, the ego start and the trigger point.
+          2 EDIT     (pure 2D, NO simulator - nothing can move, fly or respawn): scenes/myscene.json
+                     click select (shows the future path with 2 s / 5 s / horizon markers + where CaRL and BridgeDrive are at those instants)
+                     drag = move anywhere | +/- = speed (0 = stationary) | [ ] = heading | right-click or DEL = remove
+                     DOUBLE-CLICK a car = the one you will drive (yellow ring + YOU DRIVE in the header) | wheel = zoom | S = save and continue
+          3 DRIVE    (CARLA): spawns exactly the edited scene (no episode traffic), no countdown - the world stands still until you press any key in the drive window
+                     that key press releases the ego and starts the recording clock (t 0); W/A/S/D; every other actor follows your edits; recording -> npc_tracks/myscene_run.json
+          LIVE       --driver bridgedrive (or simlingo; default carl): that model drives the ego LIVE while you drive your car, no replay needed
+                     python scene.py --name myscene --drive-only --driver bridgedrive      (drop --drive-only to edit in 2D first)
+          4 TEST     --models runs them on your scene (episode ends ~3 s after it, so a run is ~15 s): videos in selected_runs/custom/
+        Variants:  --edit-only | --drive-only | --recapture | --settle 20 (more traffic) | --horizon 5 | --track-name foo
+        Manual equivalents: scene_capture.py / scene_edit.py / scene_drive.py, then TRACK=npc_tracks/<name>.json bash invader_runs.sh "..."
+        ~/miniconda3/envs/lead/bin/python ref_profile.py --meta <run>/meta.jsonl --route 24211 --label mymodel --out npc_tracks/ref_mymodel_24211.json   # extra dots
+    (DynamicObjectCrossing knobs: no_cross, adversary_speed [2 m/s], reaction_time [2.1 s], min_trigger_dist [6 m])
+    SET="StaticCutIn.reaction_time=1.2,StaticCutIn.min_trigger_dist=6,StaticCutIn.change_time=1.5" bash ~/carla_ws/run_bridgedrive_eval.sh 26396
+        # the cut-in starts much later/closer (default: 2.7 s or 15 m away, 3 s lane change) -> BridgeDrive collided (DS 60)
+    (StaticCutIn knobs: reaction_time [2.7 s], min_trigger_dist [15 m], change_time [3 s], other_lane_time [2 s], speed [60 km/h])
+    (ParkingCutIn knobs: no_cut_in, adversary_speed [13 m/s], reaction_time [2.35 s], cut_in_distance [35 m], min_trigger_dist [10 m])
+    (HighwayCutIn knobs: const_meet, no_cut_in, exit_speed [0 = hold the hand-over speed after the cut-in point in no_cut_in mode; or m/s], smooth_sync [0 = original SyncArrivalWithAgent (default); 1 = rate-limited smooth variant], sync_dist [45 m], cruise_speed [14 m/s], cut_in_distance [10 m], speed_perc [80],
+     same_lane_time [0.3], other_lane_time [3], change_time [2];
+     implemented via env SCENARIO_OVERRIDES in scenario_runner/srunner/scenarios/highway_cut_in.py in all 3 scenario_runner copies;
+     other scenario types: edit their XML <scenario> parameters or the script in srunner/scenarios/)
+    bash ~/carla_ws/views.sh chase bev --port 8848     # watch LIVE while it runs (evaluator's CARLA is on the first free port from 8848)
+Outputs: LEAD/outputs/local_evaluation/<route>/{checkpoint_endpoint.json, infractions.json, metric_info.json, <route>_debug.mp4}
+Debug video shows cameras + BEV + planned trajectory. More videos: add debug_mode=True to LEAD_CLOSED_LOOP_CONFIG in the script.
+Do NOT run drive.sh/human eval at the same time on the same GPU (two CARLA servers = half speed each).
+
+BridgeDrive OPEN WORLD (random GPS route, no scenarios/scoring) -- needs a running server: bash ~/carla_ws/carla_server.sh
+    bash ~/carla_ws/bd_drive.sh --map Town04            # or Town10HD / Town03 / Town05; --dist 600 = min route length
+    bash ~/carla_ws/bd_drive.sh --route 25378           # start on a Bench2Drive route instead (A/B check vs the benchmark)
+    bash ~/carla_ws/traffic_chaos.sh 60 50 200          # optional, in another terminal (it is the hero)
+  A viewer window opens (chase cam + top-down), overlays drawn client-side so the net's cameras stay clean:
+    GREEN dots + label = the sparse GPS route points the agent receives (one per ~50 m / at every command change)
+    RED = current target point the net is conditioned on, ORANGE = next, MAGENTA = destination
+    BLUE = the 10 route checkpoints the diffusion bridge predicted this frame (what it steers along)
+    thin dark green = dense lane-centre route (what the leaderboard scores against; NOT given to the agent; --no-dense hides)
+  CLOCK MODES:
+    default: REAL TIME. World/traffic/pedestrians at full speed. The net runs in its own thread (~3 Hz here) and LEAD's own PID
+             tracks its latest predicted path at 20 Hz. Perception is ~300 ms stale -> expect collisions in dense traffic and
+             rough junctions; that is the latency cost, not a bug. Use lighter traffic: traffic_chaos.sh 30 20 150.
+    --sim-rate 3: FIXED SLOW CLOCK. World ticks 50 ms sim steps on a 3 Hz wall timer (never waits for the net). Model sees
+             50 ms-spaced frames as trained -> benchmark-like driving, but everything moves at 0.15x (slow motion).
+  --sync = lock-step (world waits for the net, ~4x slow motion, every frame processed; what the benchmark does).
+  Chaos traffic keeps 3 cars behind you (your lane / next lane) so overtakes + cut-ins happen. QUALITY=Low bash carla_server.sh
+  renders faster. ESC or Ctrl-C stops. BD_DEBUG=1 prints the net's target speed/steer/light state each second.
+
+
+=============================
+10. BASELINES: CaRL / Roach / Think2Drive  (RL planners from autonomousvision/CaRL, code in ~/carla_ws/CaRL)  [CARL]
+=============================
+These are PRIVILEGED planners: no cameras/LiDAR. They read a bird's-eye map straight from the simulator (lane geometry,
+other cars/walkers, traffic lights, the route) = leaderboard track "MAP". CaRL/Roach = PPO (tiny CNN, ~30 ms/step), so they
+run in lock-step at the full 20 Hz in REAL TIME here. Think2Drive = DreamerV3 world model (JAX).
+Envs: conda `carl` (py3.10, torch 2.8 cu128), conda `think2drive` (py3.11, jax 0.4.35 + CUDA 12.9 ptxas swapped in for Blackwell).
+
+CaRL / Roach open world (server must be running: bash ~/carla_ws/carla_server.sh):
+    bash ~/carla_ws/carl_drive.sh --map Town04                       # CaRL v1.1 (best: DS 73 on longest6 v2)
+    bash ~/carla_ws/carl_drive.sh --map Town04 --model Roach_00      # Roach reproduction (DS 22)
+    bash ~/carla_ws/carl_drive.sh --map Town10HD --model CaRL_PY_00  # CaRL v1.0
+    bash ~/carla_ws/traffic_chaos.sh 30 20 150                       # traffic, in another terminal (world is lock-step: ticked by the agent)
+  Viewer: chase + top-down, green = route points, red = current target, magenta = goal. --speed 0 = as fast as possible.
+  Note: in the Bench2Drive leaderboard CaRL-class agents get 200 m-spaced route points (vs 50 m for sensor agents).
+
+Think2Drive free run (it starts ITS OWN CARLA server + leaderboard; do not start carla_server.sh first):
+    bash ~/carla_ws/t2d_drive.sh Town04 3          # 3 random long routes on Town04, no scenarios
+    bash ~/carla_ws/views.sh chase bev --port N    # watch: N is printed as "Starting CARLA on port: N"
+  Outputs: CaRL/Think2Drive/carla_leaderboard_checkpoints/freeroam_<ts>/ (BEV frames, videos, route json).
+  Checkpoints: CaRL/Think2Drive/logdir/ (Think2Drive_checkpoints.zip, 1.6M-step post-training). Reported DS 7 on longest6 v2
+  (the reproduction drives poorly; expect collisions) -- it is here for comparison, not as a strong baseline.
+
+11. BASELINE: SimLingo  (CVPR'25 vision-language-action driver, RenzKa/simlingo, code in ~/carla_ws/SimLingo)  [SIMLINGO]
+=============================
+Camera-only: ONE front camera 1024x512 (FOV 110) + speed + target point -> InternVL2-1B backbone (LoRA) that outputs the
+route waypoints / speed waypoints (and can answer language questions about the scene). Env: conda `simlingo` (py3.10, torch 2.8
+cu128, transformers 4.46.3, lightning 2.3.3, bf16). ~1.9 GB VRAM for the model. Leaderboard rank: DS ~2-3 pts below BridgeDrive.
+Checkpoint: SimLingo/ckpt/simlingo/checkpoints/epoch=013.ckpt/pytorch_model.pt (+ .hydra/config.yaml next to it).
+
+Bench2Drive episodes (SimLingo's own evaluator starts AND stops its own CARLA on port 8848, no carla_server.sh needed):
+    bash ~/carla_ws/run_simlingo_eval.sh 24211                   # one route, ~10 min
+    bash ~/carla_ws/run_simlingo_eval.sh 24211,2286 8850         # several routes, other port
+    SET="HighwayCutIn.no_cut_in=1" EXTEND=250 bash ~/carla_ws/run_simlingo_eval.sh 2286   # same scenario knobs as §9/§10
+    bash ~/carla_ws/show_sl_score.sh 24211                       # DS / RC / infractions
+  Outputs: SimLingo/outputs/eval_b2d/<route>/checkpoint_endpoint.json, viz frames in viz*/ ; log in logs/simlingo_<route>.log
+  Record a video: run bash ~/carla_ws/record_hero.py --port 8848 --out X.mp4 in a 2nd terminal once "Running the route" shows.
+
+Open world (server must be running: bash ~/carla_ws/carla_server.sh):
+    bash ~/carla_ws/sl_drive.sh --map Town10HD --green-lights     # lock-step: world advances one tick per model step
+    SL_DEBUG=1 bash ~/carla_ws/sl_drive.sh --map Town04 --no-viewer   # prints the model's sentence + desired speed, dumps frames
+  SPEED / COMMENTARY: the model writes a sentence ("Accelerate because the traffic light is green...") BEFORE the waypoints,
+  token by token with no KV cache -> ~1 s per step as shipped (24211: 22 s of game time took 580 s). Local patch
+  (simlingo_training/models/driving.py): the sentence is regenerated only every SL_LANG_EVERY ticks (default 10 = every
+  0.5 s of sim time) and reused with the current image in between -> ~0.3 s/step, drives the same (30-38 km/h, DS 100 on 24211).
+      SL_LANG_EVERY=1 bash sl_drive.sh ...     # original behaviour, sentence every tick (1 s/step)
+      SL_LANG=0 bash sl_drive.sh ...           # no sentence at all: 0.23 s/step, DS 100 on 24211, but timid in free roam
+                                               # (predicted speed ~0 at some spawns - the checkpoint was trained sentence-first)
+  --green-lights freezes every traffic light green, otherwise a red phase costs minutes of wall time (the model does stop
+  for red lights and says so: "Remain stopped due to the red traffic light"). Same env vars work for run_simlingo_eval.sh.
+  Generic wrapper agent_freeroam.py (any leaderboard agent): random GPS route, 50 m targets, reroute, pygame viewer.
+  Frames the model sees (SL_DEBUG=1): SimLingo/outputs/freeroam/freeroam/dbg_*.jpg  (hood in view is normal: cam at x=-1.5 z=2.0)
+
+Local patches (team_code/agent_simlingo.py): checkpoint loaded via CPU (map_location) so it fits next to a CARLA server;
+  speed cast to a float before the PID (numpy>=1.24 rejects the ragged deque); destroy() tolerates a config without
+  data_module.encoder. run_simlingo_eval.sh puts SimLingo/ first on PYTHONPATH (Bench2Drive/leaderboard/team_code shadows
+  SimLingo/team_code). Extra pip deps: transforms3d py-trees==0.8.3 dictor ephem simple-watchdog-timer filterpy rdp.
+
+12. BASELINE: Drive-pi0 / DriveMoE  (CVPR'26 VLA on PaliGemma-3B, Thinklab-SJTU/DriveMoE, code in ~/carla_ws/DriveMoE)  [PI0]
+=============================
+Drive-pi0 = the embodied-AI VLA pi0 adapted to driving: SigLIP + Gemma-2B backbone (PaliGemma-3B) + a flow-matching action
+expert that outputs 10 future trajectory points; inputs = front camera (current + 2 frames back, 224x224) + 5-step history
+of speed/accel/yaw-rate + far target point; the text prompt is fixed ("predict trajectory"). Runs the model every 2nd tick
+(10 Hz). DriveMoE adds a camera router (picks extra views) and a mixture of skill experts in the action expert.
+Leaderboard DS: Drive-pi0-Base bf16 55.9 / fp32 65.9, DriveMoE-Base bf16 74.2 (the authors' 8xH200 numbers).
+Env: conda `drivemoe` (py3.10, torch 2.8 cu128, tensorflow-cpu 2.15 (only image augmentation, kept off the GPU),
+transformers 4.42.4). Checkpoints: DriveMoE/ckpts/DrivePi0_Base_bf16.pt (11.8 GB), DriveMoE_base_bf16.pt (13.5 GB).
+PaliGemma on HF is gated (Google licence) -> only its tokenizer is needed, taken from an ungated mirror
+(leo009/paligemma-3b-pt-224, ids verified identical: <image>=257152).
+MEMORY (this box: 11.5 GB GPU, 30 GB RAM): the PaliGemma backbone runs NF4-quantised (bitsandbytes, quantize: True in the
+local configs) -> Drive-pi0 = 3.7 GB VRAM, ~190 ms per inference; unquantised bf16 is 7.2 GB and does NOT fit beside the
+6 GB CARLA the agent's 2x1600x900 cameras need. Expect a few DS points below the paper numbers because of NF4.
+Verified here (route 24211, DynamicObjectCrossing): Drive-pi0 DS 50 (hit the pedestrian, RC 100), DriveMoE DS 100 (4.7 GB VRAM,
+5 cameras, ~0.46 s per tick in eval vs ~0.22 s for Drive-pi0 -> a 30 s route takes 2-5 min of wall time).
+The checkpoint files also hold optimizer states (that is why 12-13 GB); they are memory-mapped at load, otherwise the loader
+needs 25 GB of RAM and the kernel OOM-killer takes the desktop down (it did once). The launchers run under a cgroup cap.
+
+Bench2Drive episodes (Bench2Drive's evaluator starts AND stops its own CARLA on PORT):
+    bash ~/carla_ws/run_pi0_eval.sh 24211                      # Drive-pi0
+    bash ~/carla_ws/run_pi0_eval.sh 24211 drivemoe             # DriveMoE
+    SET="HighwayCutIn.no_cut_in=1" EXTEND=250 bash ~/carla_ws/run_pi0_eval.sh 2286 drivepi0 8860
+    bash ~/carla_ws/show_pi0_score.sh 24211 [drivemoe]
+  Outputs: DriveMoE/outputs/eval_b2d/<model>/<route>/checkpoint_endpoint.json ; log logs/pi0_<model>_<route>.log
+  The evaluator's own CARLA runs at CARLA_QUALITY=Low by default here (VRAM); CARLA_QUALITY=Epic bash run_pi0_eval.sh ... to override.
+  Record a video: bash ~/carla_ws/record_hero.py --port 8858 --out X.mp4 in a 2nd terminal once "Running the route" shows.
+
+Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: the agent's 2x1600x900 cams + BEV cost
+  ~1.1 s per step at Epic vs ~0.22 s at Low, and the model only sees 224x224 anyway):
+    bash ~/carla_ws/pi0_drive.sh --map Town10HD --green-lights
+    bash ~/carla_ws/pi0_drive.sh --model drivemoe --map Town04 --speed 0
+  Configs: DriveMoE/config/eval/*/closed_loop_local.yaml (use_bf16, checkpoint paths). The agent needs IS_BENCH2DRIVE=1
+  (adds its 50 m BEV camera, which the wrapper only allows when SAVE_PATH is set) - the launchers set all of that.
+
+  TOUR OF ALL 44 SCENARIO TYPES (one route each, tour44_routes.txt):
+    bash ~/carla_ws/tour44.sh carl            # or bridgedrive / simlingo / drivepi0 / drivemoe; resumes where it left off
+    bash ~/carla_ws/tour44.sh carl "HighwayCutIn DynamicObjectCrossing"   # only these types
+    bash ~/carla_ws/tour44_stop.sh            # stop it
+    -> selected_runs/tour44/<model>/NN_<type>_<route>_DS<score>.mp4 + .png, RESULTS.txt
+
+  DRIVE A SCENARIO TYPE YOURSELF (Bench2Drive route, scored; one window, bright green marker = 20 m ahead on the route, dim dots = route, red dot = goal):
+    bash ~/carla_ws/tour44_drive.sh list                       # the 44 types and their route
+    bash ~/carla_ws/tour44_drive.sh HighwayCutIn               # one route of that type (name, case-insensitive)
+    bash ~/carla_ws/tour44_drive.sh cutin                      # substring: HighwayCutIn, ParkingCutIn, StaticCutIn back to back
+    bash ~/carla_ws/tour44_drive.sh "PedestrianCrossing T_Junction"   # several types in a row
+    bash ~/carla_ws/tour44_drive.sh 5                          # the 5th type in the list;  "5+" = from the 5th to the 44th in order
+    bash ~/carla_ws/tour44_drive.sh 2286                       # a specific route id
+    bash ~/carla_ws/tour44_drive.sh all                        # the whole 44-type tour, resumes where it stopped ("all fresh" = start over)
+    keys: W/S A/D, Shift gentle, Q reverse, Space handbrake, N = skip this route, ESC = quit
+    HUD: "NN/44 ScenarioType (route, Town)", next turn + distance; scores print when the session ends
+
+  ENDLESS GENERATED HIGHWAY NETWORK (no map; built on the run from generated OpenDRIVE; bare road, no scenery):
+    ~/miniconda3/envs/b2d/bin/python ~/carla_ws/highway_endless.py              # 3 lanes each way, 3 km arms, 40 NPCs at 90-120 km/h
+    ~/miniconda3/envs/b2d/bin/python ~/carla_ws/highway_endless.py --lanes 4 --arm 5000 --traffic 60 --npc-speed 100,130 --seed 7
+    every world is a PLUS: 4 highway arms + a 4-way crossing (straight from any lane, LEFT from the inner lane, RIGHT from the outer lane);
+    the arm you take leads to the next crossing: near its end the next plus is generated (a few seconds) - endless in every direction.
+    --chaos 1 (default; 2 = heavy, 0 = off): cars behind overtake and CUT IN front of you, cars ahead brake-check, cars beside
+    drift into your lane and back - the HUD announces each event; --traffic 60 default, 2/3 of them around you
+    fence at the road edge; keys: W/S A/D (Bench2Drive steering, real-time paced), Shift gentle, Q reverse, Space handbrake, P autopilot, ESC quit
+    (highway_endless_v1.py = the earlier single-road version without crossings)
+
+  §13 WA-JEPA (V-JEPA 2.1 world-action model, NAVSIM-trained; ZERO-SHOT in CARLA, local wiring in /home/all/WA-JEPA/close_loop/carla_agent.py)
+    bash ~/carla_ws/run_wajepa_eval.sh 2286                      # one route (port 8868, own CARLA); AGENT_TRACE=file for annotate_run.py --y-left
+    bash ~/carla_ws/wajepa_runs.sh "24211 2709"                  # run + record + annotate -> selected_runs/wajepa/, RESULTS.txt
+    env knobs: WAJEPA_MAX_KMH (60), WAJEPA_INFER_EVERY (4 ticks), WAJEPA_WARMUP_TICKS (100: fixed-throttle start so the history shows motion)
+    WAJEPA_CTRL=hugsim TAG=_hugsim bash ~/carla_ws/wajepa_runs.sh "2709 2286"   # HUGSIM's own loop: iLQR + kinematic bicycle at 4 Hz, the ego is
+         moved with the model's exact velocities (physics on, collisions still scored); the car then moves as it does in HUGSIM. Slow (7-13 km/h) but clean.
+    videos: orange path = the 4 s plan with 1s/2s/3s/4s labels; .text_changes.txt next to each video lists the controller state changes
+    model: 4 cams (nuPlan rig, FOV 63.7) -> 512x256, 4 history frames 0.5 s apart, ego_status [cmd onehot, vx, vy, ax, ay], 8 waypoints at 2 Hz
+    inference ~0.75 s (788M params, 4.8 GB); the plan copies the speed in its own history, so speed drifts unless the warm-up gives it motion
+
+  §14 PDM-Lite (privileged rule-based expert, SimLingo/team_code/autopilot.py; MAP track: reads actors/map/lights from the simulator)
+    bash ~/carla_ws/run_pdmlite_eval.sh 2286                   # one route (port 8848, own CARLA); AGENT_TRACE=file for annotate_run.py
+    bash ~/carla_ws/pdmlite_runs.sh "2286 24211"               # run + record + annotate -> selected_runs/pdmlite/, RESULTS.txt (SET/EXTEND/TAG env as usual)
+    bash ~/carla_ws/pdmlite_cutins.sh                          # the cut-in scenes (fast cut-in, lane invader + pedestrian, hand-driven scene1)
+    reference: the authors' PDM-Lite on all 220 Bench2Drive routes = mean DS 97.0 (SimLingo/Bench2Drive/pdm_lite_b2d_traj/merged.json)
+    the .text_changes.txt next to each video logs its target speed and "brake for vehicle / walker / red light / stop sign" decisions
+
+  FAST CUT-IN scene (HighwayCutIn 2286, cut-in point 4 m instead of 10, cut-in car at 120% speed; route extended 250 m):
+    SET="HighwayCutIn.cut_in_distance=4,HighwayCutIn.speed_perc=120" EXTEND=250
+    e.g.  SET=... EXTEND=250 TAG=_FASTCUT bash ~/carla_ws/pdmlite_runs.sh "2286"      # or wajepa_runs.sh (+ WAJEPA_CTRL=hugsim)
+          SET=... EXTEND=250 bash ~/carla_ws/run_carl_eval.sh 2286   /   run_bridgedrive_eval.sh 2286   /   run_simlingo_eval.sh 2286
+    saved runs: selected_runs/pdmlite/pdmlite_2286_HighwayCutIn_FASTCUT.*  and  selected_runs/wajepa/wajepa_2286_HighwayCutIn_FASTCUT_hugsim.*
+
+  PARKING LOT (Town05 central lot; live, you drive): bays full of parked cars; pedestrians walk the aisles from car doors to the road
+  edge and back (they step aside for slow cars, stand still for fast ones, and a car that hits them knocks them down); near you a parked
+  car opens its door and someone gets out, or someone gets in and the car backs out, crosses the lot and leaves through the driveway
+  (south edge, y -35..-24) onto the street and joins the Traffic Manager traffic; street cars come in through the driveway and park.
+    QUALITY=Epic bash ~/carla_ws/carla_server.sh &          # server first (Low quality segfaults on Town05)
+    ~/miniconda3/envs/b2d/bin/python ~/carla_ws/parking_lot.py [--parked 36 --walkers 30 --street 30 --seed N]
+    tests: parking_lot.py --test-exit   (a car leaves and must end on a street lane)   --test-arrive (a car comes in and must park)
+    keys: W/S A/D, Shift gentle, Q reverse, Space handbrake, ESC quit (actors stay; the next start clears them). You start on the driveway.
+
+  STAGED GESTURE SCENE (any map, server on 2000): a car ahead stops, flashes LEFT then RIGHT indicator, HONKS (headlight flash +
+  a synthesised horn sound; CARLA has no horn), opens the driver and passenger doors, two people get out, walk in front of you and
+  do: WAVE, HAND UP (stop), HEAD turned to your car, PHONE to the ear, HANDS in pockets, then RUN away at 4.5 m/s.
+    ~/miniconda3/envs/b2d/bin/python ~/carla_ws/gesture_scene.py          # R restarts the scene, ESC quits; you can drive meanwhile
+    ~/miniconda3/envs/b2d/bin/python ~/carla_ws/gesture_scene.py --test   # headless: one frame per stage -> selected_runs/gesture_stages.png
+    gestures are skeleton poses (Walker.set_bones + blend_pose; axes measured on this skeleton: upper-arm pitch = forward, yaw = up/sideways,
+    forearm yaw = elbow, head yaw = turn); the GEST table in the script holds the bone offsets if you want to add gestures.
+
+  MALL OF AMERICA scene (from mall_of_america_carla_scenic.zip, rebuilt without Scenic; bundle unpacked in mall_of_america/):
+    ~/miniconda3/envs/b2d/bin/python ~/carla_ws/mall_scene.py [--cars 24 --walkers 60 --parked-stride 2 --trigger 30]
+    the bundle's OpenDRIVE access loop (600 x 450 m) generated live + mall/garage massing from engine cube props + the north lot's
+    parked cars; Traffic Manager cars on the loop, pedestrians on the pavements, a pedestrian that crosses at the south entrance when
+    you come within --trigger m. Lane paint and the zebra are drawn (the generated mesh has none). Keys: W/S A/D, Shift gentle,
+    Q reverse, Space handbrake, P autopilot, ESC quit. Needs the server on 2000. Grey blocks only: the textured OBJ needs an Unreal import.
+
+  REAL-WORLD SITE from map data (geo_scenes/): any place on Earth, scale-faithful roads + building layout, CARLA's own meshes for the rest.
+    python geo_scenes/build_site.py NAME LAT LON [--half 170]        # 1. OSM via Overpass (ways + multipolygons)  2. ESRI World Imagery z19
+                                                                     # 3. SAM3 (env sam3): cars + trees, and 'parking lot'/'grass'/'water'/'building' masks
+                                                                     # 4. OSM -> OpenDRIVE (carla.Osm2Odr, service roads/aisles included), sanitized, lots paved
+    ~/miniconda3/envs/b2d/bin/python geo_scene.py --site geo_scenes/NAME [--cars 30 --walkers 60] [--test --snapshot out.png] [--no-marks]
+    sites built: geo_scenes/eastliberty (Target, 6231 Penn Ave Pittsburgh: 40.4608842 -79.9214202), geo_scenes/waterfront (Homestead: 40.4119 -79.9140), geo_scenes/rosspark (Ross Park Mall: 40.5462 -80.0075)
+    what is exact: road centre lines / lane widths from OSM (UTM metres, same frame as the satellite image and the detections), every OSM
+      building footprint (min-rotated rectangle, or cell-by-cell fill for irregular outlines) at its building:levels height, parking-lot polygons
+      paved as 'parking' lanes (OSM polygons + SAM3 lot masks), parked cars at the satellite-detected poses, trees at the detected crowns.
+    what is CARLA assets: buildings = cooked meshes chosen by tag (church SM_Church01, apartments SM_Apartment/SM_Bloc04/SM_Block08, houses
+      SM_House/SM_Mansion/SM_TerracedHouse (stacked for towers), large retail/commercial/offices = SM_Block03Floor storey modules (rectangles: grid;
+      irregular outlines: modules laid along the exact polygon edges + filled interior, so curved/odd contours are kept), OSM building:part
+      (podium + towers with building:min_level) built as podium and towers; underground buildings (layer<0, metro stations) skipped; big box over a
+      ground garage (OSM layer>=2 with roads under it, e.g. this Target) = columns + deck + store on top); trees SM_Maple/Acer/Beech/TreePine
+      scaled to crown; shop fronts (awnings, benches, vending, ATM, carts at supermarkets, tables at restaurants); bus stops, bins, bike racks,
+      street lamps on the main roads. Markings: centre-line dashes on two-way roads and between same-direction lanes (one 3 m dash per 9 m); parking: detected cars are grouped into rows
+      (one heading per neighbourhood), each row is a grid at 2.7 m pitch extended across the lot, bay lines are painted on the grid and the cars are
+      spawned centred in their grid slot (uniform spacing, never across a line); bays under elevated decks likewise. All markings are the cooked
+      lane-marking mesh, so they shade like paint. Cars and bays keep 1 m from building outlines. Ground is flat: every road AND parking-lot lane has elevation a=0, so lane meets lane with no step (ray-cast verified: 3481/3484
+      lane centres at exactly 0.00 cm; the 3 outliers are places where a crossing road's sidewalk physically overlaps a driving lane in OSM).
+      The ground slab sits 1 cm below. Street sidewalk kerbs keep CARLA's normal 15 cm, but sidewalk lanes on roads INSIDE a junction are
+      shrunk to 1 cm wide: CARLA ignores OpenDRIVE <height> on junction connecting roads, so the kerb otherwise crosses the area cars turn
+      through (raised lane samples in junctions: 122 -> 9). Do NOT delete sidewalk lanes: that segfaults the mesh generator.
+      Buildings never block a lane: every placement path (grid, module ring, block) skips a piece whose base is at ground level and lands
+      within half a lane width + 1 m of a driving/parking lane, so garage aisles and passages through footprints stay open.
+      Parked cars face properly: parallel bays follow the lane's travel direction, perpendicular bays point away from the aisle (25 % reverse-parked). Debug lines (--paint) are only for diagnostics.
+    HUD: chase cam + satellite minimap (zoomed, with traffic/parked dots) + site overview. Keys W/S A/D, Shift gentle, Q reverse, Space, P autopilot, ESC.
+    heights: building:levels/height tags; else estimate_heights.py (roof parallax vs footprint, calibrated on >=3 tagged buildings, else nothing);
+      else type defaults. Untagged skyscrapers therefore come out at the type default: tag them in OSM or add SITE/heights.json {name: metres}.
+    contour caveat: the satellite is off-nadir, so tall roofs are displaced from their ground footprints (10-100 m in CBDs); CARLA builds at the
+      OSM ground footprint, which is the correct geometry even though it does not overlay the roof in sat.png. Towers that OSM maps only as an
+      outline (no building:part) become the outline's podium height. Lane dashes and parking-bay lines are real painted meshes (St_Road_TileRoad_LaneMarkingBroken, scaled), on by default (--no-marks to skip).
+    QA: python geo_scenes/aerial.py out.png [half_m cx cy [pitch]]  (top-down capture of the loaded scene, north up, same framing as sat.png)
+        python geo_scenes/photo.py out.png x y yaw [pitch z fov]  (ground-level capture);  selected_runs/geo_*_compare.png = satellite | CARLA
+    limits: no water/grass materials (ground is a flat beige cube; those areas stay beige), Google Street View / 3D tiles not used (no API key;
+      OSM + ESRI only), roof shapes generic, runtime textures cannot target spawned props. Asset catalogue (sizes, pivots): geo_scenes/geo_assets.json.
+    pipeline scripts: build_site.py -> detect_sat.py (sam3 env) -> build_xodr.py (fix_xodr.py: stretches <1.5 m roads, drops out-of-range crosswalk
+      objects (server segfault 's <= road->GetLength()'), restricted->driving lanes (SUMO exports service roads as 'restricted', invisible to CARLA);
+      add_parking.py: lot polygons -> 9 m parallel 'parking' lane strips)
+    WEB APP (search -> bird's-eye -> BUILD -> DRIVE): python geo_scenes/site_app.py   then open http://localhost:8765
+      type a place/address (Nominatim) or "lat, lon", pan the ESRI satellite map, click to set the centre, choose 240-560 m, BUILD (~1 min),
+      DRIVE starts the CARLA server if needed and the driving window on DISPLAY :1; STOP ends both. Log and phase shown in the panel.

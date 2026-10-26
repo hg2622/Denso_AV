@@ -1,0 +1,1704 @@
+diff --git a/3rd_party/Bench2Drive/leaderboard/leaderboard/scenarios/scenario_manager.py b/3rd_party/Bench2Drive/leaderboard/leaderboard/scenarios/scenario_manager.py
+index f71b4753..b0b8a227 100644
+--- a/3rd_party/Bench2Drive/leaderboard/leaderboard/scenarios/scenario_manager.py
++++ b/3rd_party/Bench2Drive/leaderboard/leaderboard/scenarios/scenario_manager.py
+@@ -226,6 +226,12 @@ class ScenarioManager(object):
+ 
+             if self.scenario_tree.status != py_trees.common.Status.RUNNING:
+                 self._running = False
++            # custom (scene replay): EndAfterScene writes this flag when the recorded scene (+pad) is over -> end the route now
++            import os as _os_se
++            if _os_se.path.exists(f'/tmp/scene_end_{_os_se.getpid()}'):
++                try: _os_se.remove(f'/tmp/scene_end_{_os_se.getpid()}')
++                except OSError: pass
++                print('[scene_end] recorded scene is over -> route ends', flush=True); self._running = False
+ 
+             ego_trans = self.ego_vehicles[0].get_transform()
+             self._spectator.set_transform(carla.Transform(ego_trans.location + carla.Location(z=70),
+diff --git a/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/background_activity.py b/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/background_activity.py
+index fdacf566..82676771 100644
+--- a/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/background_activity.py
++++ b/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/background_activity.py
+@@ -2118,6 +2118,9 @@ class BackgroundBehavior(AtomicBehavior):
+ 
+     def _spawn_actor(self, spawn_wp, ego_dist=0):
+         """Spawns an actor"""
++        import os as _os   # custom (npc_record.py): while the freeze file exists the background manager spawns nothing (scene editor snapshot)
++        _fz = _os.environ.get('NPC_RECORD_BG_FREEZE', '')
++        if _fz and _os.path.exists(_fz): return None
+         ego_location = CarlaDataProvider.get_location(self._ego_actor)
+         if ego_location.distance(spawn_wp.transform.location) < ego_dist:
+             return None
+@@ -2139,6 +2142,9 @@ class BackgroundBehavior(AtomicBehavior):
+ 
+     def _spawn_actors(self, spawn_wps, ego_dist=0):
+         """Spawns several actors in batch"""
++        import os as _os   # custom (npc_record.py): while the freeze file exists the background manager spawns nothing (scene editor snapshot)
++        _fz = _os.environ.get('NPC_RECORD_BG_FREEZE', '')
++        if _fz and _os.path.exists(_fz): return []
+         spawn_transforms = []
+         ego_location = CarlaDataProvider.get_location(self._ego_actor)
+         for wp in spawn_wps:
+@@ -2163,6 +2169,9 @@ class BackgroundBehavior(AtomicBehavior):
+ 
+     def _spawn_source_actor(self, source, ego_dist=20):
+         """Given a source, spawns an actor at that source"""
++        import os as _os   # custom (npc_record.py): while the freeze file exists the background manager spawns nothing (scene editor snapshot)
++        _fz = _os.environ.get('NPC_RECORD_BG_FREEZE', '')
++        if _fz and _os.path.exists(_fz): return None
+         ego_location = CarlaDataProvider.get_location(self._ego_actor)
+         source_transform = source.wp.transform
+         if ego_location.distance(source_transform.location) < ego_dist:
+diff --git a/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/cut_in_with_static_vehicle.py b/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/cut_in_with_static_vehicle.py
+index 01d345bf..a2217f83 100644
+--- a/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/cut_in_with_static_vehicle.py
++++ b/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/cut_in_with_static_vehicle.py
+@@ -62,6 +62,15 @@ class StaticCutIn(BasicScenario):
+         self._adversary_end_distance = 70
+ 
+         self._extra_space = 30  # Leave extra space as a vehicle is invading the ego's lane (BA parameter)
++        self._change_time = 3.0      # s the lane change takes
++        self._other_lane_time = 2.0  # s it stays in the ego lane before the plan continues
++        # --- custom overrides (env SCENARIO_OVERRIDES="StaticCutIn.reaction_time=1.2,StaticCutIn.min_trigger_dist=6,...") ---
++        import os as _os
++        for kv in filter(None, _os.environ.get('SCENARIO_OVERRIDES', '').split(',')):
++            k, v = kv.split('='); cls, name = k.split('.')
++            if cls != 'StaticCutIn': continue
++            if hasattr(self, '_' + name) and not isinstance(getattr(self, '_' + name), bool): setattr(self, '_' + name, type(getattr(self, '_' + name))(float(v)))
++            print(f'[StaticCutIn override] {name} = {v}', flush=True)
+ 
+         self._side_transforms = []
+         self._side_wp = None
+@@ -237,7 +246,7 @@ class StaticCutIn(BasicScenario):
+ 
+         cut_in_movement = py_trees.composites.Sequence()
+         cut_in_movement.add_child(CutIn(
+-            self._adversary_actor, self.ego_vehicles[0], cut_in_direction, change_time=3, other_lane_time=2))
++            self._adversary_actor, self.ego_vehicles[0], cut_in_direction, change_time=self._change_time, other_lane_time=self._other_lane_time))
+         cut_in_movement.add_child(BasicAgentBehavior(
+             self._adversary_actor, plan=self._plan, target_speed=self._speed))
+ 
+diff --git a/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/highway_cut_in.py b/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/highway_cut_in.py
+index 1a0fac4f..ab398ad3 100644
+--- a/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/highway_cut_in.py
++++ b/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/highway_cut_in.py
+@@ -61,6 +61,22 @@ class HighwayCutIn(BasicScenario):
+         self._speed_perc = 80
+         self._cut_in_distance = 10
+         self._extra_space = 170
++        # --- custom overrides (env SCENARIO_OVERRIDES="HighwayCutIn.cut_in_distance=5,HighwayCutIn.no_cut_in=1,...") ---
++        self._no_cut_in = False
++        self._const_meet = False     # one-shot: pick ONE constant speed so both cars meet at the cut-in point; no sync, no cut-in, no accel after
++        self._smooth_sync = False     # default: the ORIGINAL SyncArrivalWithAgent (1 = smoothed variant)
++        self._sync_dist = 1e9         # sync (smoothly) during the whole approach, up to the cut-in point
++        self._cruise_speed = 14.0     # m/s fallback when the ego stands still
++        self._exit_speed = 0.0        # m/s held after the cut-in point in no_cut_in mode; 0 = keep the speed it has at the hand-over
++        import os as _os
++        for kv in filter(None, _os.environ.get('SCENARIO_OVERRIDES', '').split(',')):
++            k, v = kv.split('='); cls, name = k.split('.')
++            if cls != 'HighwayCutIn': continue
++            if name == 'no_cut_in': self._no_cut_in = v not in ('0', 'false', 'False')
++            elif name == 'const_meet': self._const_meet = v not in ('0', 'false', 'False')
++            elif name == 'smooth_sync': self._smooth_sync = v not in ('0', 'false', 'False')
++            elif hasattr(self, '_' + name): setattr(self, '_' + name, type(getattr(self, '_' + name))(float(v)) if not isinstance(getattr(self, '_' + name), bool) else v not in ('0', 'false'))
++            print(f'[HighwayCutIn override] {name} = {v}', flush=True)
+ 
+         self._start_location = convert_dict_to_location(config.other_parameters['other_actor_location'])
+ 
+@@ -116,14 +132,36 @@ class HighwayCutIn(BasicScenario):
+ 
+         trigger_wp = self._map.get_waypoint(self.config.trigger_points[0].location)
+         reference_wp = generate_target_waypoint(trigger_wp)
+-        behavior.add_child(SyncArrivalWithAgent(
+-            self._cut_in_vehicle, self.ego_vehicles[0], target_wp.transform, reference_wp.transform, 5))
++        if self._const_meet:
++            meet = py_trees.composites.Parallel(policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE, name="ConstantMeet")
++            meet.add_child(ConstantMeet(self._cut_in_vehicle, self.ego_vehicles[0], target_wp.transform, reference_wp.transform, fallback=self._cruise_speed))
++            from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import DriveDistance
++            meet.add_child(DriveDistance(self._cut_in_vehicle, 450.0, name="MeetDistance"))
++            meet.add_child(NpcSpeedLogger(self._cut_in_vehicle))
++            behavior.add_child(meet); behavior.add_child(ActorDestroy(self._cut_in_vehicle))
++            return behavior
++        if self._smooth_sync:
++            behavior.add_child(SmoothSyncArrival(
++                self._cut_in_vehicle, self.ego_vehicles[0], target_wp.transform, reference_wp.transform, 5,
++                sync_dist=self._sync_dist, cruise=self._cruise_speed))
++        else:
++            behavior.add_child(SyncArrivalWithAgent(
++                self._cut_in_vehicle, self.ego_vehicles[0], target_wp.transform, reference_wp.transform, 5))
+ 
+-        # Cut in
+-        behavior.add_child(CutIn(
+-            self._cut_in_vehicle, self.ego_vehicles[0], 'left', self._speed_perc,
+-            self._same_lane_time, self._other_lane_time, self._change_time, name="Cut_in")
+-        )
++        # Cut in (or, with the no_cut_in override, just keep driving in its own lane next to the ego)
++        if self._no_cut_in:
++            from srunner.scenariomanager.scenarioatomics.atomic_behaviors import WaypointFollower
++            from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import DriveDistance
++            keep = py_trees.composites.Parallel(policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE, name="KeepLane")
++            keep.add_child(ConstantHold(self._cut_in_vehicle, self._exit_speed))   # after the cut-in point: one constant speed, own lane, no cut-in
++            keep.add_child(DriveDistance(self._cut_in_vehicle, 400.0, name="KeepLaneDistance"))
++            keep.add_child(NpcSpeedLogger(self._cut_in_vehicle))
++            behavior.add_child(keep)
++        else:
++            behavior.add_child(CutIn(
++                self._cut_in_vehicle, self.ego_vehicles[0], 'left', self._speed_perc,
++                self._same_lane_time, self._other_lane_time, self._change_time, name="Cut_in")
++            )
+         behavior.add_child(ActorDestroy(self._cut_in_vehicle))
+         return behavior
+ 
+@@ -141,3 +179,101 @@ class HighwayCutIn(BasicScenario):
+         Remove all actors and traffic lights upon deletion
+         """
+         self.remove_all_actors()
++
++class SmoothSyncArrival(SyncArrivalWithAgent):
++    """SyncArrivalWithAgent, but smooth: constant cruise speed until `sync_dist` m before its target, then the arrival-time
++    sync with the commanded speed rate-limited (max 2 m/s^2 accel, 3 m/s^2 decel) and clamped to [3, 22] m/s, so the NPC
++    never mirrors the ego's stop-and-go."""
++    def __init__(self, actor, reference_actor, actor_target, reference_target, end_dist=1, sync_dist=45.0, cruise=14.0, name="SmoothSyncArrival"):
++        super().__init__(actor, reference_actor, actor_target, reference_target, end_dist, name)
++        self._sync_dist = sync_dist; self._cruise = cruise; self._v_cmd = None; self._dt = 0.05
++
++    def update(self):
++        import py_trees
++        from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
++        from srunner.scenariomanager.scenarioatomics.atomic_behaviors import calculate_distance
++        loc = CarlaDataProvider.get_location(self._actor); distance = calculate_distance(loc, self._actor_target.location)
++        # finish as soon as the NPC reaches (or has passed) ITS cut-in point - regardless of where the ego is - so the
++        # post-sync behaviour (fast, steady lane keeping) takes over there and the NPC never lingers next to the ego
++        to_target = self._actor_target.location - loc; fwd = CarlaDataProvider.get_transform(self._actor).get_forward_vector()
++        import time as _t
++        if not hasattr(self, '_t_log') or _t.time() - self._t_log > 2.0:
++            self._t_log = _t.time(); print(f'[SmoothSync] dist_to_cutin_point={distance:.1f} m  npc_speed={CarlaDataProvider.get_velocity(self._actor):.1f} m/s  ego_speed={CarlaDataProvider.get_velocity(self._reference_actor):.1f} m/s', flush=True)
++        if distance < max(self._end_dist, 3.0) or (to_target.x * fwd.x + to_target.y * fwd.y) < 0:
++            # the sync uses CARLA's ConstantVelocityAgent, which pins the actor to a constant velocity (physics override) -
++            # switch that off, otherwise the follower's throttle has no effect and the NPC stays at the last synced speed
++            try: self._actor.disable_constant_velocity()
++            except Exception: pass
++            print('[SmoothSync] reached the cut-in point -> SUCCESS (fast lane keeping starts)', flush=True); return py_trees.common.Status.SUCCESS
++        if distance > self._sync_dist:
++            desired = self._cruise
++        else:
++            distance_reference = calculate_distance(CarlaDataProvider.get_location(self._reference_actor), self._reference_target.location)
++            velocity_reference = CarlaDataProvider.get_velocity(self._reference_actor)
++            desired = distance / (distance_reference / velocity_reference) if velocity_reference > 0.5 else 3.0
++        desired = min(max(desired, 3.0), 22.0)
++        if self._v_cmd is None: self._v_cmd = CarlaDataProvider.get_velocity(self._actor) or self._cruise
++        self._v_cmd += min(max(desired - self._v_cmd, -3.0 * self._dt), 2.0 * self._dt)   # rate limit
++        self._agent.set_target_speed(3.6 * self._v_cmd)
++        self._actor.apply_control(self._agent.run_step())
++        return py_trees.common.Status.RUNNING
++
++
++class NpcSpeedLogger(py_trees.behaviour.Behaviour):
++    """Debug: print the NPC speed / lane every 2 s while the post-sync lane keeping runs (never finishes by itself)."""
++    def __init__(self, actor, name="NpcSpeedLogger"):
++        super().__init__(name); self._actor = actor; self._t = 0.0
++    def update(self):
++        import time as _t
++        if _t.time() - self._t > 2.0:
++            self._t = _t.time()
++            try:
++                v = CarlaDataProvider.get_velocity(self._actor); loc = CarlaDataProvider.get_location(self._actor)
++                wp = CarlaDataProvider.get_map().get_waypoint(loc); c = self._actor.get_control()
++                print(f'[KeepLane] npc_speed={v:.1f} m/s thr={c.throttle:.2f} brk={c.brake:.2f} road={wp.road_id} lane={wp.lane_id} junction={wp.is_junction}', flush=True)
++            except Exception as e: print('[KeepLane] log error', e, flush=True)
++        return py_trees.common.Status.RUNNING
++
++
++class ConstantMeet(py_trees.behaviour.Behaviour):
++    """Pick ONE constant speed at the start so the NPC reaches its cut-in point when the ego (at its current speed) reaches
++    its reference point; then hold that speed in its own lane for the whole scenario (no sync, no cut-in, no acceleration)."""
++    def __init__(self, actor, ego, actor_target, ego_target, fallback=14.0, name="ConstantMeet"):
++        super().__init__(name); self._actor = actor; self._ego = ego; self._actor_target = actor_target; self._ego_target = ego_target; self._fallback = fallback; self._agent = None
++    def initialise(self):
++        from srunner.scenariomanager.scenarioatomics.atomic_behaviors import calculate_distance
++        from agents.navigation.constant_velocity_agent import ConstantVelocityAgent
++        d_npc = calculate_distance(CarlaDataProvider.get_location(self._actor), self._actor_target.location)
++        d_ego = calculate_distance(CarlaDataProvider.get_location(self._ego), self._ego_target.location)
++        v_ego = CarlaDataProvider.get_velocity(self._ego)
++        v = d_npc * v_ego / d_ego if (v_ego > 1.0 and d_ego > 1.0) else self._fallback   # meet-at-point speed, one shot
++        self._v = min(max(v, 2.0), 25.0)
++        print(f'[ConstantMeet] npc {d_npc:.0f} m from its cut-in point, ego {d_ego:.0f} m at {v_ego:.1f} m/s -> NPC constant speed {self._v:.1f} m/s ({3.6*self._v:.0f} km/h) for the whole scenario', flush=True)
++        self._agent = ConstantVelocityAgent(self._actor, target_speed=3.6 * self._v, map_inst=CarlaDataProvider.get_map(), grp_inst=CarlaDataProvider.get_global_route_planner())
++    def update(self):
++        self._actor.apply_control(self._agent.run_step())   # lane following at the fixed constant velocity
++        return py_trees.common.Status.RUNNING
++    def terminate(self, new_status):
++        try: self._actor.disable_constant_velocity()
++        except Exception: pass
++        if self._agent: self._agent.destroy_sensor()
++
++
++class ConstantHold(py_trees.behaviour.Behaviour):
++    """Hold ONE constant speed in the current lane (CARLA constant-velocity mode): the speed the NPC has when this starts
++    (min 4 m/s), or `speed` if > 0. No acceleration, no syncing, no lane change."""
++    def __init__(self, actor, speed=0.0, name="ConstantHold"):
++        super().__init__(name); self._actor = actor; self._speed = speed; self._agent = None
++    def initialise(self):
++        from agents.navigation.constant_velocity_agent import ConstantVelocityAgent
++        try: self._actor.disable_constant_velocity()
++        except Exception: pass
++        v = self._speed if self._speed > 0 else max(CarlaDataProvider.get_velocity(self._actor), 4.0)
++        print(f'[ConstantHold] after the cut-in point: holding {v:.1f} m/s ({3.6*v:.0f} km/h) in its own lane', flush=True)
++        self._agent = ConstantVelocityAgent(self._actor, target_speed=3.6 * v, map_inst=CarlaDataProvider.get_map(), grp_inst=CarlaDataProvider.get_global_route_planner())
++    def update(self):
++        self._actor.apply_control(self._agent.run_step()); return py_trees.common.Status.RUNNING
++    def terminate(self, new_status):
++        try: self._actor.disable_constant_velocity()
++        except Exception: pass
++        if self._agent: self._agent.destroy_sensor()
+diff --git a/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/object_crash_vehicle.py b/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/object_crash_vehicle.py
+index 485705ad..c84b5aa5 100644
+--- a/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/object_crash_vehicle.py
++++ b/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/object_crash_vehicle.py
+@@ -16,6 +16,8 @@ import carla
+ from math import floor
+ 
+ from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
++from srunner.scenariomanager.timer import GameTime
++from srunner.scenariomanager.scenarioatomics.atomic_behaviors import AtomicBehavior
+ from srunner.scenariomanager.scenarioatomics.atomic_behaviors import (ActorDestroy,
+                                                                       KeepVelocity,
+                                                                       Idle,
+@@ -138,6 +140,108 @@ class StationaryObjectCrossing(BasicScenario):
+         self.remove_all_actors()
+ 
+ 
++
++class LaneInvader(AtomicBehavior):
++    """custom: oncoming car that drifts into the ego lane and eases back (timer starts when the ego is within trigger_dist).
++    Lateral profile: 0 -> offset over t_in, hold t_hold, back to 0 over t_out. Pure-pursuit steering on its own lane, speed held."""
++    def __init__(self, actor, ego, speed, offset, start, t_in, t_hold, t_out, trigger_dist, name="LaneInvader"):
++        super().__init__(name, actor); self._ego = ego; self._v = speed; self._off = offset; self._start = start; self._in = t_in; self._hold = t_hold; self._out = t_out; self._trig = trigger_dist
++        self._t0 = None; self._map = CarlaDataProvider.get_map(); self._n = 0
++    def _target_offset(self, t):
++        if t < self._start: return 0.0
++        t -= self._start
++        if t < self._in: return self._off * t / self._in
++        t -= self._in
++        if t < self._hold: return self._off
++        t -= self._hold
++        if t < self._out: return self._off * (1.0 - t / self._out)
++        return 0.0
++    def update(self):
++        a = self._actor
++        if a is None or not a.is_alive: return py_trees.common.Status.SUCCESS
++        loc = a.get_location(); gap = loc.distance(self._ego.get_location()); now = GameTime.get_time()
++        if self._t0 is None and gap <= self._trig: self._t0 = now; print(f'[LaneInvader] trigger: gap {gap:.1f} m, drifting {self._off:.1f} m into the ego lane', flush=True)
++        off = self._target_offset(now - self._t0) if self._t0 is not None else 0.0
++        wp = self._map.get_waypoint(loc, project_to_road=True, lane_type=carla.LaneType.Driving); ctl = carla.VehicleControl()
++        nxt = wp.next(6.0) if wp is not None else []
++        if not nxt: ctl.brake = 1.0; a.apply_control(ctl); return py_trees.common.Status.RUNNING
++        tgt = nxt[0].transform; right = tgt.get_right_vector(); target = tgt.location - carla.Location(right.x * off, right.y * off, 0.0)
++        tf = a.get_transform(); fwd = tf.get_forward_vector(); d = target - tf.location
++        local_x = d.x * fwd.x + d.y * fwd.y; local_y = -d.x * fwd.y + d.y * fwd.x   # left-handed CARLA: positive = right
++        alpha = math.atan2(local_y, max(local_x, 0.1)); ctl.steer = max(-0.7, min(0.7, 1.6 * alpha))
++        v = a.get_velocity(); spd = math.hypot(v.x, v.y)
++        if spd < self._v: ctl.throttle = min(0.9, 0.45 + 0.25 * (self._v - spd))
++        elif spd > self._v + 1.0: ctl.brake = 0.3
++        else: ctl.throttle = 0.35
++        a.apply_control(ctl); self._n += 1
++        if self._n % 20 == 0: print(f'[LaneInvader] gap {gap:5.1f} m  offset {off:4.2f} m  speed {spd:4.1f} m/s', flush=True)
++        return py_trees.common.Status.RUNNING
++
++
++class TrackReplayer(AtomicBehavior):
++    """custom: replays a hand-recorded NPC track (npc_record.py) kinematically; the clock starts when the ego is within
++    ego_start m of the scenario trigger point (same convention as the recorder's ghost ego)."""
++    def __init__(self, actor, ego, track, trigger, ego_start, name="TrackReplayer"):
++        super().__init__(name, actor); self._ego = ego; self._track = track; self._trigger = trigger; self._ego_start = ego_start; self._t0 = None; self._i = 0
++    def update(self):
++        a = self._actor
++        if a is None or not a.is_alive: return py_trees.common.Status.RUNNING   # a lost actor must not end the scene (SUCCESS_ON_ONE parallel)
++        now = GameTime.get_time()
++        if self._t0 is None:
++            if self._ego.get_location().distance(self._trigger) <= self._ego_start: self._t0 = now; print(f'[TrackReplayer] start (ego {self._ego_start:.0f} m from the trigger), {len(self._track)} poses, {self._track[-1][0]:.1f} s', flush=True)
++            return py_trees.common.Status.RUNNING
++        t = now - self._t0; tr = self._track
++        while self._i + 1 < len(tr) and tr[self._i + 1][0] <= t: self._i += 1
++        p = tr[self._i]
++        if self._i + 1 < len(tr):
++            q = tr[self._i + 1]; f = (t - p[0]) / max(q[0] - p[0], 1e-3); f = min(max(f, 0.0), 1.0)
++            dyaw = ((q[4] - p[4] + 180) % 360) - 180; pose = [p[1] + f * (q[1] - p[1]), p[2] + f * (q[2] - p[2]), p[3] + f * (q[3] - p[3]), p[4] + f * dyaw]
++        else: pose = p[1:5]
++        a.set_transform(carla.Transform(carla.Location(pose[0], pose[1], pose[2]), carla.Rotation(yaw=pose[3])))
++        return py_trees.common.Status.RUNNING
++
++
++class HoldEgoUntilFlag(AtomicBehavior):
++    """custom (npc_record.py): freeze the ego from the scenario's first tick until the flag file exists, so a recorder has time to set up."""
++    def __init__(self, ego, flag, name="HoldEgoUntilFlag"):
++        super().__init__(name, ego); self._flag = flag; self._held = False
++    def update(self):
++        import os as _os
++        if self._held == 'released': return py_trees.common.Status.RUNNING   # stay RUNNING: this sits in a SUCCESS_ON_ONE parallel, SUCCESS would end the whole scenario
++        if not self._held: self._actor.set_simulate_physics(False); self._held = True; print(f'[HoldEgo] ego held until {self._flag} exists', flush=True)
++        if _os.path.exists(self._flag): self._actor.set_simulate_physics(True); self._held = 'released'; print('[HoldEgo] released', flush=True)
++        return py_trees.common.Status.RUNNING
++
++
++class SceneClearer(AtomicBehavior):
++    """custom (npc_track replay): every tick, remove episode vehicles inside `radius` of the centre that are not part of the recorded
++    scene - background traffic keeps spawning after the scenario is built, so a one-shot clear is not enough."""
++    def __init__(self, ego, centre, radius, keep_ids, name="SceneClearer"):
++        super().__init__(name, ego); self._c = centre; self._r = radius; self._keep = set(keep_ids); self._n = 0
++    def update(self):
++        for v in CarlaDataProvider.get_world().get_actors().filter('vehicle.*'):
++            if v.id in self._keep or v.attributes.get('role_name') == 'hero': continue
++            if v.get_location().distance(self._c) < self._r:
++                try: v.destroy(); self._n += 1; print(f'[SceneClearer] removed {v.type_id} ({self._n} so far)', flush=True)
++                except Exception: pass
++        return py_trees.common.Status.RUNNING
++
++
++class EndAfterScene(AtomicBehavior):
++    """custom (npc_track replay): end the route `pad` seconds after the recorded tracks finish. The clock starts where the
++    TrackReplayers start (ego within ego_start of the trigger), not at scenario creation, so the episode == the recorded scene."""
++    def __init__(self, ego, dur, pad, trigger, ego_start, name="EndAfterScene"):
++        super().__init__(name, ego); self._dur = dur; self._pad = pad; self._trigger = trigger; self._ego_start = ego_start; self._t0 = None
++    def update(self):
++        now = GameTime.get_time()
++        if self._t0 is None:
++            if self._actor.get_location().distance(self._trigger) > self._ego_start: return py_trees.common.Status.RUNNING
++            self._t0 = now; print(f'[EndAfterScene] scene started; route ends in {self._dur + self._pad:.1f} s', flush=True)
++        if now - self._t0 >= self._dur + self._pad:
++            import os as _os_e; open(f'/tmp/scene_end_{_os_e.getpid()}', 'w').close()   # the leaderboard's scenario_manager ends the route on this flag
++            print('[EndAfterScene] scene finished -> ending the route', flush=True); return py_trees.common.Status.SUCCESS
++        return py_trees.common.Status.RUNNING
++
+ class DynamicObjectCrossing(BasicScenario):
+ 
+     """
+@@ -174,6 +278,30 @@ class DynamicObjectCrossing(BasicScenario):
+         self.timeout = timeout
+ 
+         self._number_of_attempts = 6
++        # --- custom overrides (env SCENARIO_OVERRIDES="DynamicObjectCrossing.no_cross=1,DynamicObjectCrossing.adversary_speed=3") ---
++        self._no_cross = False
++        self._hold_ego = ''              # custom: flag-file path; the ego is frozen until the file exists (npc_record.py setup screen)
++        self._npc_track = ''             # custom: hand-recorded NPC track (npc_record.py) replayed kinematically
++        self._npc_ego_start = 50.0       # replay clock starts when the ego is this far from the trigger (recorder default)
++        self._invader = False            # custom: oncoming car drifting into the ego lane (pedestrian usually combined with no_cross=1)
++        self._invader_dist = 70.0        # spawn gap ahead of the trigger point, on the opposite lane [m]
++        self._invader_speed = 6.0        # its speed [m/s]
++        self._invader_offset = 1.6       # max intrusion into the ego lane [m] (lane ~3.5 m)
++        self._invader_trigger = 60.0     # ego-invader gap that starts its timer [m]
++        self._invader_start = 0.5        # s after trigger before it starts drifting
++        self._invader_in = 1.5           # s to reach max intrusion
++        self._invader_hold = 1.5         # s at max intrusion
++        self._invader_out = 2.5          # s to ease back into its lane
++        import os as _os
++        for kv in filter(None, _os.environ.get('SCENARIO_OVERRIDES', '').split(',')):
++            k, v = kv.split('='); cls, name = k.split('.')
++            if cls != 'DynamicObjectCrossing': continue
++            if name == 'no_cross': self._no_cross = v not in ('0', 'false', 'False')
++            elif name == 'invader': self._invader = v not in ('0', 'false', 'False')
++            elif name == 'npc_track': self._npc_track = v
++            elif name == 'hold_ego': self._hold_ego = v
++            elif hasattr(self, '_' + name) and not isinstance(getattr(self, '_' + name), bool): setattr(self, '_' + name, type(getattr(self, '_' + name))(float(v)))
++            print(f'[DynamicObjectCrossing override] {name} = {v}', flush=True)
+ 
+         self._distance = get_value_parameter(config, 'distance', float, 12)
+         self._blocker_model = get_value_parameter(config, 'blocker_model', str, 'static.prop.vendingmachine')
+@@ -298,6 +426,73 @@ class DynamicObjectCrossing(BasicScenario):
+         then after 60 seconds, a timeout stops the scenario
+         """
+         sequence = py_trees.composites.Sequence(name="CrossingActor")
++        invader_behaviour = None; extra_behaviours = []
++        if self._hold_ego: extra_behaviours.append(HoldEgoUntilFlag(self.ego_vehicles[0], self._hold_ego))
++        if self._invader:   # custom: spawn the oncoming invader on the opposite lane, invader_dist ahead
++            loc, _ = get_location_in_distance_from_wp(self._reference_waypoint, self._invader_dist, False)
++            wp = self._wmap.get_waypoint(loc); opp = wp.get_left_lane()
++            if opp is None or opp.lane_id * wp.lane_id > 0 or opp.lane_type != carla.LaneType.Driving: opp = wp.get_right_lane()
++            if opp is None or opp.lane_id * wp.lane_id > 0: raise ValueError('LaneInvader: no opposite lane next to the route here')
++            tf = opp.transform; tf.location.z += 0.5
++            inv = CarlaDataProvider.request_new_actor('vehicle.audi.tt', tf, rolename='scenario', color='255,0,0')
++            if inv is None: raise ValueError('LaneInvader: could not spawn the invader')
++            inv.set_simulate_physics(True); self.other_actors.append(inv)
++            invader_behaviour = LaneInvader(inv, self.ego_vehicles[0], self._invader_speed, self._invader_offset, self._invader_start, self._invader_in, self._invader_hold, self._invader_out, self._invader_trigger)
++            print(f'[DynamicObjectCrossing] LaneInvader spawned {self._invader_dist:.0f} m ahead on the opposite lane', flush=True)
++        if self._npc_track:   # custom: hand-recorded NPC (npc_record.py)
++            import json as _json, os as _os
++            _path = self._npc_track if _os.path.isabs(self._npc_track) else _os.path.join('/home/all/carla_ws', self._npc_track)   # evaluators run from their own cwd
++            rec = _json.load(open(_path)); tr = rec['track']; p0 = tr[0]
++            bp_name = rec.get('filter', 'vehicle.audi.tt'); tf = carla.Transform(carla.Location(p0[1], p0[2], p0[3] + 0.3), carla.Rotation(yaw=p0[4]))
++            def _clear_spot(loc, r=4.0):   # the recorded car may have been one of the episode's own traffic cars: remove whatever the episode put there
++                for v in CarlaDataProvider.get_world().get_actors().filter('vehicle.*'):
++                    if v.attributes.get('role_name') != 'hero' and v.get_location().distance(loc) < r:
++                        try: v.destroy(); print(f'[npc_track] removed {v.type_id} occupying the recorded spot', flush=True)
++                        except Exception: pass
++            if rec.get('cars'):   # scene-editor format: the whole scene is recorded -> clear the episode's own vehicles around the scene, spawn exactly the recorded cars
++                rad = float(rec.get('clear_radius', 150.0)); n_cl = 0
++                for v in CarlaDataProvider.get_world().get_actors().filter('vehicle.*'):
++                    if v.attributes.get('role_name') != 'hero' and v.get_location().distance(self._trigger_location) < rad:
++                        try: v.destroy(); n_cl += 1
++                        except Exception: pass
++                print(f'[npc_track] cleared {n_cl} episode vehicle(s) within {rad:.0f} m of the trigger', flush=True)
++                for ex in rec['cars']:
++                    et = ex['track']; e0 = et[0]; etf = carla.Transform(carla.Location(e0[1], e0[2], e0[3] + 0.3), carla.Rotation(yaw=e0[4]))
++                    if ex.get('walker'):   # recorded pedestrian: spawn the walker model, no colour attribute
++                        ea = CarlaDataProvider.request_new_actor(ex.get('filter', 'walker.pedestrian.0001'), etf, rolename='scenario')
++                        if ea is not None:
++                            try: ea.apply_control(carla.WalkerControl(speed=0.0))
++                            except Exception: pass
++                    else:
++                        ea = CarlaDataProvider.request_new_actor(ex.get('filter', 'vehicle.audi.tt'), etf, rolename='scenario', color=ex.get('color', '255,255,255'))
++                    if ea is None: print(f"[npc_track] could not spawn {ex.get('label')} - skipped", flush=True); continue
++                    ea.set_simulate_physics(False); self.other_actors.append(ea)
++                    extra_behaviours.append(TrackReplayer(ea, self.ego_vehicles[0], et, self._trigger_location, float(rec.get('ego_start', self._npc_ego_start)), name='TrackReplayer_' + ('driven' if ex.get('driven') else 'car')))
++                print(f"[DynamicObjectCrossing] npc_track {self._npc_track}: {len(rec['cars'])} recorded cars (driven: {rec.get('you')})", flush=True)
++                extra_behaviours.append(SceneClearer(self.ego_vehicles[0], self._trigger_location, rad, [x.id for x in self.other_actors]))
++                if rec.get('scene'): self._no_cross = True; print('[npc_track] scene_drive recording -> the scenario crossing is disabled (as it was while recording)', flush=True)
++                if any(x.get('walker') for x in rec['cars']): self._no_cross = True; print('[npc_track] recorded pedestrians present -> the scenario crossing is disabled', flush=True)
++                import os as _os2   # SCENE_END=<s>: stop the route that many seconds after the recorded tracks end (default: run the whole route)
++                _se = _os2.environ.get('SCENE_END', '')
++                if _se not in ('', '0'):
++                    _dur = max(t[-1][0] for t in [c['track'] for c in rec['cars']])
++                    extra_behaviours.append(EndAfterScene(self.ego_vehicles[0], _dur, float(_se), self._trigger_location, float(rec.get('ego_start', self._npc_ego_start))))
++                tr = None
++            else:
++                _clear_spot(tf.location)
++                npc = CarlaDataProvider.request_new_actor(bp_name, tf, rolename='scenario', color=rec.get('color', '255,0,0'))
++            if tr is not None:
++                if npc is None: raise ValueError('npc_track: could not spawn the NPC at the first recorded pose')
++                npc.set_simulate_physics(False); self.other_actors.append(npc)
++                invader_behaviour = TrackReplayer(npc, self.ego_vehicles[0], tr, self._trigger_location, float(rec.get('ego_start', self._npc_ego_start)))
++                for ex in rec.get('extra', []):   # other recorded cars (e.g. the lead car the user drove behind)
++                    et = ex['track']; e0 = et[0]; etf = carla.Transform(carla.Location(e0[1], e0[2], e0[3] + 0.3), carla.Rotation(yaw=e0[4]))
++                    _clear_spot(etf.location)
++                    ea = CarlaDataProvider.request_new_actor(ex.get('filter', 'vehicle.tesla.model3'), etf, rolename='scenario', color=ex.get('color', '255,255,255'))
++                    if ea is None: raise ValueError('npc_track: could not spawn an extra recorded car')
++                    ea.set_simulate_physics(False); self.other_actors.append(ea)
++                    extra_behaviours.append(TrackReplayer(ea, self.ego_vehicles[0], et, self._trigger_location, float(rec.get('ego_start', self._npc_ego_start)), name='TrackReplayerExtra'))
++                print(f'[DynamicObjectCrossing] npc_track {self._npc_track}: {len(tr)} poses, {tr[-1][0]:.1f} s', flush=True)
+         if self.route_mode:
+             total_dist = self._distance + 10
+             sequence.add_child(LeaveSpaceInFront(total_dist))
+@@ -319,15 +514,25 @@ class DynamicObjectCrossing(BasicScenario):
+         move_duration = move_distance / self._adversary_speed
+         if self.route_mode:
+             sequence.add_child(LeaveCrossingSpace(self._collision_wp))
+-        sequence.add_child(KeepVelocity(
+-            self.other_actors[0], self._adversary_speed,
+-            duration=move_duration, distance=move_distance, name="AdversaryCrossing"))
++        if self._no_cross:   # override: the pedestrian stays where it is (behind the blocker) until the ego has driven past
++            sequence.add_child(DriveDistance(self.ego_vehicles[0], 25.0, name="EgoPassesPedestrian"))
++        else:
++            sequence.add_child(KeepVelocity(
++                self.other_actors[0], self._adversary_speed,
++                duration=move_duration, distance=move_distance, name="AdversaryCrossing"))
+ 
+         # Remove everything
+         sequence.add_child(ActorDestroy(self.other_actors[0], name="DestroyAdversary"))
+         sequence.add_child(ActorDestroy(self.other_actors[1], name="DestroyBlocker"))
+         sequence.add_child(DriveDistance(self.ego_vehicles[0], self._ego_end_distance, name="EndCondition"))
+-
++        if invader_behaviour is not None or extra_behaviours:
++            root = py_trees.composites.Parallel(policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE, name="CrossingWithInvader")
++            # npc_track replay: the original crossing sequence is left out (its early completion - ego drove 25 m - would end the replayers and
++            # EndAfterScene, freezing the recorded cars mid-scene; a Parallel re-ticks a finished Sequence, which then touches destroyed actors)
++            if not self._npc_track: root.add_child(sequence)
++            if invader_behaviour is not None: root.add_child(invader_behaviour)
++            for eb in extra_behaviours: root.add_child(eb)
++            return root
+         return sequence
+ 
+     def _create_test_criteria(self):
+diff --git a/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/parking_cut_in.py b/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/parking_cut_in.py
+index 30c8fee6..7713f6f8 100644
+--- a/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/parking_cut_in.py
++++ b/3rd_party/Bench2Drive/scenario_runner/srunner/scenarios/parking_cut_in.py
+@@ -46,6 +46,15 @@ class ParkingCutIn(BasicScenario):
+         self._min_trigger_dist = 10.0  # Min distance to the collision location that triggers the adversary [m]
+         self._end_distance = 30
+         self._extra_space = 20
++        # --- custom overrides (env SCENARIO_OVERRIDES="ParkingCutIn.no_cut_in=1,ParkingCutIn.adversary_speed=8") ---
++        self._no_cut_in = False
++        import os as _os
++        for kv in filter(None, _os.environ.get('SCENARIO_OVERRIDES', '').split(',')):
++            k, v = kv.split('='); cls, name = k.split('.')
++            if cls != 'ParkingCutIn': continue
++            if name == 'no_cut_in': self._no_cut_in = v not in ('0', 'false', 'False')
++            elif hasattr(self, '_' + name) and not isinstance(getattr(self, '_' + name), bool): setattr(self, '_' + name, type(getattr(self, '_' + name))(float(v)))
++            print(f'[ParkingCutIn override] {name} = {v}', flush=True)
+ 
+         self._bp_attributes = {'base_type': 'car', 'generation': 2, 'special_type': ''}
+ 
+@@ -151,12 +160,15 @@ class ParkingCutIn(BasicScenario):
+         if self.route_mode:
+             sequence.add_child(ChangeRoadBehavior(extra_space=self._extra_space))
+ 
+-        # Move the adversary
+-        cut_in = py_trees.composites.Parallel(
+-            policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE, name="Cut in behavior")
+-        cut_in.add_child(BasicAgentBehavior(self.other_actors[1], opt_dict={'ignore_traffic_lights': True}))
+-        cut_in.add_child(DriveDistance(self.other_actors[1], self._end_distance))
+-        sequence.add_child(cut_in)
++        # Move the adversary (or, with the no_cut_in override, leave it parked and just let the ego drive past)
++        if self._no_cut_in:
++            sequence.add_child(DriveDistance(self.ego_vehicles[0], self._end_distance + self._cut_in_distance, name="EgoPassesParkedCar"))
++        else:
++            cut_in = py_trees.composites.Parallel(
++                policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE, name="Cut in behavior")
++            cut_in.add_child(BasicAgentBehavior(self.other_actors[1], opt_dict={'ignore_traffic_lights': True}))
++            cut_in.add_child(DriveDistance(self.other_actors[1], self._end_distance))
++            sequence.add_child(cut_in)
+ 
+         # Remove everything
+         sequence.add_child(ActorDestroy(self.other_actors[0], name="DestroyAdversary"))
+diff --git a/lead/common/base_agent.py b/lead/common/base_agent.py
+index 3c72bf01..b2b1107a 100644
+--- a/lead/common/base_agent.py
++++ b/lead/common/base_agent.py
+@@ -111,6 +111,7 @@ class BaseAgent:
+         position_for_planner = (
+             self.filtered_state[:2] if use_kalman_filter else noisy_gps_pos[:2]
+         )
++        self.noisy_state_dbg = noisy_gps_pos   # debug: GPS-derived ego position (bd_freeroam.py prints it)
+         for planner in self.gps_waypoint_planners_dict.values():
+             planner.run_step(np.append(position_for_planner, noisy_gps_pos[2]))
+ 
+@@ -119,7 +120,7 @@ class BaseAgent:
+             {
+                 "theta": self.compass,
+                 "filtered_state": self.filtered_state,
+-                "noisy_state": noisy_gps_pos,
++                "noisy_state": noisy_gps_pos,   # (debug mirror below)
+                 "accel_x": input_data["imu"][1][0],
+                 "accel_y": input_data["imu"][1][1],
+                 "accel_z": input_data["imu"][1][2],
+diff --git a/lead/inference/config_closed_loop.py b/lead/inference/config_closed_loop.py
+index 941884ec..ccb73988 100644
+--- a/lead/inference/config_closed_loop.py
++++ b/lead/inference/config_closed_loop.py
+@@ -131,66 +131,74 @@ class ClosedLoopConfig(OpenLoopConfig):
+     # Frequency of frame production during evaluation
+     produce_frame_frequency = 1
+ 
++    # BridgeDrive
++    viz_downsample_factor: int = 2 # draw 1 image in every viz_downsample_factor step
++    collision_gradual_brake: bool = True # gradually brake when collision is predicted
++    diffusion_speed: bool = False # choose whether to use speed from diffusion
++    step_num: int = 20
++    debug_mode: bool = False  # missing in the released code; True = write debug/demo images+videos (set via LEAD_CLOSED_LOOP_CONFIG)
++
++
+     @overridable_property
+     def produce_demo_image(self):
+         """If true produce demo image output."""
+-        if self.is_on_slurm:
++        if not self.debug_mode: # Shu
+             return False
+         return False
+ 
+     @overridable_property
+     def produce_demo_video(self):
+         """If true produce demo video output."""
+-        if self.is_on_slurm:
++        if not self.debug_mode: # Shu
+             return False
+         return False
+ 
+     @overridable_property
+     def produce_debug_image(self):
+         """If true produce debug image output."""
+-        if self.is_on_slurm:
++        if not self.debug_mode: # Shu
+             return False
+         return True
+ 
+     @overridable_property
+     def produce_debug_video(self):
+         """If true produce debug video output."""
+-        if self.is_on_slurm:
++        if not self.debug_mode: # Shu 
+             return True
+         return True
+ 
+     @overridable_property
+     def produce_input_image(self):
+         """If true produce input image output."""
+-        if self.is_on_slurm:
++        if not self.debug_mode: # Shu
+             return False
+         return False
+ 
+     @overridable_property
+     def produce_input_video(self):
+         """If true produce input video output."""
+-        if self.is_on_slurm:
++        if not self.debug_mode: # Shu 
+             return False
+         return False
+ 
+     @overridable_property
+     def produce_grid_image(self):
+         """If true produce grid image output (demo + input stacked vertically)."""
+-        if self.is_on_slurm:
++        if not self.debug_mode: # Shu 
+             return False
+         return False
+ 
+     @overridable_property
+     def produce_grid_video(self):
+         """If true produce grid video output (demo + input stacked vertically)."""
+-        if self.is_on_slurm:
++        if not self.debug_mode: # Shu 
+             return False
+         return False
+ 
+     @overridable_property
+     def produce_input_log(self):
+         """If true produce input logging."""
+-        if self.is_on_slurm:
++        if not self.debug_mode: # Shu 
+             return False
+         return False
+ 
+@@ -206,7 +214,7 @@ class ClosedLoopConfig(OpenLoopConfig):
+     @property
+     def is_bench2drive(self):
+         """Check if running in Bench2Drive environment."""
+-        return bool(os.getenv("IS_BENCH2DRIVE", "False"))
++        return os.getenv("IS_BENCH2DRIVE", "False").strip().lower() in ("1", "true", "yes")   # bool("False") was True
+ 
+     @property
+     def route_id(self):
+diff --git a/lead/inference/video_recorder.py b/lead/inference/video_recorder.py
+index 7804e904..7c89af83 100644
+--- a/lead/inference/video_recorder.py
++++ b/lead/inference/video_recorder.py
+@@ -721,8 +721,11 @@ class VideoRecorder:
+         # Check if ffmpeg is installed
+         command = f"ffmpeg -i {final_path} -c:v libx264 -crf {crf} -preset {preset} -an {temp_path} -y"
+         os.system(command)
+-        os.replace(temp_path, final_path)
+-        LOG.info(f"Compressed video: {final_path}")
++        if os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
++            os.replace(temp_path, final_path)
++            LOG.info(f"Compressed video: {final_path}")
++        else:   # ffmpeg missing or failed: keep the uncompressed file instead of crashing at teardown
++            LOG.warning(f"ffmpeg compression failed, keeping uncompressed video: {final_path}")
+ 
+     @beartype
+     def cleanup_and_compress(self) -> None:
+diff --git a/lead/tfv6/tfv5_planning_decoder.py b/lead/tfv6/tfv5_planning_decoder.py
+index 0c746b0a..ebe9cc21 100644
+--- a/lead/tfv6/tfv5_planning_decoder.py
++++ b/lead/tfv6/tfv5_planning_decoder.py
+@@ -1,439 +1,439 @@
+-import math
+-
+-import jaxtyping as jt
+-import torch
+-import torch.nn.functional as F
+-from beartype import beartype
+-from torch import nn
+-
+-from lead.common import common_utils as t_u
+-from lead.training.config_training import TrainingConfig
+-
+-
+-class TFv5PlanningDecoder(nn.Module):
+-    @beartype
+-    def __init__(
+-        self, input_bev_channels: int, config: TrainingConfig, device: torch.device
+-    ):
+-        super().__init__()
+-        self.device = device
+-        self.config = config
+-        self.planning_context_encoder = PlanningContextEncoder(
+-            config=self.config,
+-            input_bev_channels=input_bev_channels,
+-            device=self.device,
+-        )
+-
+-        self.query = nn.Parameter(
+-            torch.zeros(
+-                1,
+-                self.config.num_route_points_prediction
+-                + self.config.num_way_points_prediction
+-                + 1,
+-                self.config.transfuser_token_dim,
+-            )
+-        )
+-
+-        self.transformer_decoder = torch.nn.TransformerDecoder(
+-            decoder_layer=nn.TransformerDecoderLayer(
+-                self.config.transfuser_token_dim,
+-                self.config.transfuser_num_bev_cross_attention_heads,
+-                activation=nn.GELU(),
+-                batch_first=True,
+-            ),
+-            num_layers=self.config.transfuser_num_bev_cross_attention_layers,
+-            norm=nn.LayerNorm(self.config.transfuser_token_dim),
+-        )
+-
+-        self.tp_encoder = nn.Linear(2, config.gru_hidden_size)
+-
+-        self.route_gru = torch.nn.GRU(
+-            input_size=config.transfuser_token_dim,
+-            hidden_size=config.gru_hidden_size,
+-            batch_first=True,
+-        )
+-        self.route_decoder = nn.Sequential(nn.Linear(config.gru_hidden_size, 2))
+-
+-        self.wp_gru = torch.nn.GRU(
+-            input_size=config.transfuser_token_dim,
+-            hidden_size=config.gru_hidden_size,
+-            batch_first=True,
+-        )
+-        self.wp_decoder = nn.Sequential(nn.Linear(config.gru_hidden_size, 2))
+-
+-        self.target_speed_decoder = nn.Sequential(
+-            nn.Linear(
+-                self.config.transfuser_token_dim,
+-                self.config.transfuser_token_dim,
+-            ),
+-            nn.ReLU(inplace=True),
+-            nn.Linear(self.config.transfuser_token_dim, len(self.config.target_speeds)),
+-        )
+-
+-        self.reset_parameters()
+-
+-    def reset_parameters(self):
+-        nn.init.uniform_(self.query)
+-
+-    @beartype
+-    def forward(
+-        self,
+-        bev_features: torch.Tensor,
+-        radar_logits: jt.Float[torch.Tensor, "B Q C"] | None,
+-        radar_predictions: jt.Float[torch.Tensor, "B Q 4"] | None,
+-        data: dict,
+-        log: dict,
+-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, None]:
+-        """
+-        Args:
+-            bev_features: [bs, input_dim, height, width]
+-            radar_logits: radar classification logits (not used)
+-            radar_predictions: radar box predictions (not used)
+-            data: dict
+-            log: dict
+-        Returns:
+-            route: [bs, num_route_points, 2]
+-            waypoints: [bs, num_way_points, 2]
+-            target_speed: [bs, len(target_speeds)] Target speed distribution
+-            target_speed_scalar: [bs,] Target speed in m/s
+-        """
+-        context_tokens = self.planning_context_encoder(
+-            bev_features=bev_features, data=data, log=log
+-        )
+-
+-        bs = context_tokens.shape[0]
+-
+-        query = self.query.repeat(bs, 1, 1)
+-        values = self.transformer_decoder(query, context_tokens)
+-
+-        # Split the queries
+-        route_values, waypoints_values, speed_value = (
+-            values[:, : self.config.num_route_points_prediction],
+-            values[:, self.config.num_route_points_prediction : -1],
+-            values[:, -1],
+-        )
+-        target_point = data["target_point"].to(
+-            device=self.device, dtype=self.config.torch_float_type, non_blocking=True
+-        )
+-        hidden_state = self.tp_encoder(target_point).unsqueeze(0)
+-
+-        # Forward-autoregression
+-        route_values, _ = self.route_gru(route_values, hidden_state)
+-        waypoints_values, _ = self.wp_gru(waypoints_values, hidden_state)
+-
+-        route = torch.cumsum(self.route_decoder(route_values), 1)
+-        waypoints = torch.cumsum(self.wp_decoder(waypoints_values), 1)
+-        target_speed_dist = self.target_speed_decoder(speed_value)
+-
+-        return (
+-            route,
+-            waypoints,
+-            target_speed_dist,
+-            decode_two_hot(torch.softmax(target_speed_dist, dim=-1), self.config),
+-            None,
+-        )
+-
+-    @beartype
+-    def compute_loss(self, predictions, data: dict, loss: dict, log: dict):
+-        waypoints_label = data["future_waypoints"].to(
+-            self.device, dtype=self.config.torch_float_type, non_blocking=True
+-        )[:, : self.config.num_way_points_prediction]
+-        target_speed_distribution = encode_two_hot(
+-            data["target_speed"].to(
+-                self.device, dtype=self.config.torch_float_type, non_blocking=True
+-            ),
+-            data["brake"].to(self.device, dtype=torch.bool, non_blocking=True),
+-            self.config,
+-        )
+-        route_label = data["route"].to(
+-            self.device, dtype=self.config.torch_float_type, non_blocking=True
+-        )
+-
+-        loss.update(
+-            {
+-                "loss_tf": F.l1_loss(
+-                    predictions.pred_future_waypoints, waypoints_label, reduction="none"
+-                ).mean(),
+-                "loss_tfpp_speed": F.cross_entropy(
+-                    predictions.pred_target_speed_distribution,
+-                    target_speed_distribution,
+-                ),
+-                "loss_tfpp": F.l1_loss(predictions.pred_route, route_label),
+-            }
+-        )
+-
+-        if (
+-            "iteration" in data
+-            and ((data["iteration"] + 1) % self.config.wandb_log_scalars_frequency) == 0
+-        ):
+-            target_speed_labels = decode_two_hot(target_speed_distribution, self.config)
+-            log.update(
+-                {
+-                    "metric/route_ade": t_u.average_displacement_error(
+-                        predictions.pred_route, route_label
+-                    ),
+-                    "metric/route_fde": t_u.final_displacement_error(
+-                        predictions.pred_route, route_label
+-                    ),
+-                    "metric/target_speed_error": torch.mean(
+-                        torch.abs(
+-                            predictions.pred_target_speed_scalar - target_speed_labels
+-                        )
+-                    ).item(),
+-                    "metric/target_speed_correlation": torch.corrcoef(
+-                        torch.stack(
+-                            [predictions.pred_target_speed_scalar, target_speed_labels]
+-                        )
+-                    )[0, 1].item(),
+-                    "metric/waypoints_ade": t_u.average_displacement_error(
+-                        predictions.pred_future_waypoints, waypoints_label
+-                    ),
+-                    "metric/waypoints_fde": t_u.final_displacement_error(
+-                        predictions.pred_future_waypoints, waypoints_label
+-                    ),
+-                }
+-            )
+-            log["metric/tfpp_speed_error"] = log["metric/target_speed_error"]
+-            log["metric/tfpp_ade"] = log["metric/route_ade"]
+-            log["metric/tfpp_fde"] = log["metric/route_fde"]
+-            log["metric/tf_ade"] = log["metric/waypoints_ade"]
+-            log["metric/tf_fde"] = log["metric/waypoints_fde"]
+-
+-
+-@beartype
+-def decode_two_hot(
+-    two_hot_label: jt.Float[torch.Tensor, "B C"], config: TrainingConfig
+-) -> jt.Float[torch.Tensor, " B"]:
+-    """Decode a two-hot encoded tensor into a scalar representation.
+-
+-    Args:
+-        two_hot_label: The two-hot encoded tensor. Must be between 0 and 1 and sum to 1 along the last dimension.
+-        config: The training configuration.
+-
+-    Returns:
+-        jt.Float[torch.Tensor, " B"]: The decoded scalar tensor.
+-    """
+-    assert torch.all((0.0 <= two_hot_label) & (two_hot_label <= 1.0)), (
+-        "Two-hot labels must be between 0 and 1"
+-    )
+-    assert torch.allclose(
+-        torch.sum(two_hot_label, dim=-1),
+-        torch.ones(
+-            two_hot_label.shape[0],
+-            device=two_hot_label.device,
+-            dtype=two_hot_label.dtype,
+-        ),
+-    ), "Two-hot labels must sum to 1"
+-
+-    target_speeds = torch.tensor(
+-        config.target_speeds, device=two_hot_label.device, dtype=two_hot_label.dtype
+-    ).unsqueeze(0)
+-    target_speed = (two_hot_label * target_speeds).sum(axis=-1)
+-    return target_speed
+-
+-
+-@beartype
+-def encode_two_hot(
+-    scalar_speed: jt.Float[torch.Tensor, " B"],
+-    brake: jt.Bool[torch.Tensor, " B"],
+-    config: TrainingConfig,
+-) -> jt.Float[torch.Tensor, "B C"]:
+-    assert all(scalar_speed >= 0.0)
+-    target_speeds = torch.tensor(
+-        config.target_speeds, dtype=scalar_speed.dtype, device=scalar_speed.device
+-    )
+-    labels = torch.zeros(
+-        len(scalar_speed),
+-        len(target_speeds),
+-        dtype=scalar_speed.dtype,
+-        device=scalar_speed.device,
+-    )
+-    labels[brake, 0] = 1.0
+-    non_brake = ~brake
+-    speeds = scalar_speed[non_brake]
+-    last_bin = speeds >= target_speeds[-1]
+-    labels[non_brake & (scalar_speed >= target_speeds[-1]), -1] = 1.0
+-
+-    # Interpolation between bins
+-    interp_mask = ~last_bin
+-    if interp_mask.any():
+-        interp_speeds = speeds[interp_mask]
+-        upper_idx = torch.searchsorted(target_speeds, interp_speeds, right=False)
+-        lower_idx = upper_idx - 1
+-
+-        lower_val = target_speeds[lower_idx]
+-        upper_val = target_speeds[upper_idx]
+-
+-        lower_weight = (upper_val - interp_speeds) / (upper_val - lower_val)
+-        upper_weight = (interp_speeds - lower_val) / (upper_val - lower_val)
+-
+-        row_idx = torch.where(non_brake)[0][interp_mask]
+-        labels[row_idx, lower_idx] = lower_weight
+-        labels[row_idx, upper_idx] = upper_weight
+-
+-    return labels
+-
+-
+-class PlanningContextEncoder(nn.Module):
+-    @beartype
+-    def __init__(
+-        self, config: TrainingConfig, input_bev_channels: int, device: torch.device
+-    ):
+-        super().__init__()
+-        self.device = device
+-        self.config = config
+-
+-        self.num_status_tokens = 0
+-
+-        if self.config.use_velocity:
+-            self.num_status_tokens += 1
+-            self.velocity_encoder = nn.Sequential(
+-                nn.Linear(1, self.config.transfuser_token_dim),
+-            )
+-            print("Model will use velocity.")
+-
+-        if self.config.use_discrete_command:
+-            self.num_status_tokens += 1
+-            self.command_encoder = nn.Sequential(
+-                nn.Linear(6, self.config.transfuser_token_dim)
+-            )
+-            print("Model will use discrete command.")
+-
+-        self.cosine_pos_embeding = PositionEmbeddingSine(
+-            config, self.config.transfuser_token_dim // 2, normalize=True
+-        )
+-        self.status_pos_embedding = nn.Parameter(
+-            torch.zeros(1, self.num_status_tokens, self.config.transfuser_token_dim)
+-        )
+-
+-        self.dimension_adapter = nn.Conv2d(
+-            input_bev_channels, self.config.transfuser_token_dim, kernel_size=1
+-        )
+-        self.reset_parameters()
+-
+-    def reset_parameters(self):
+-        nn.init.uniform_(self.status_pos_embedding)
+-
+-    @beartype
+-    def forward(
+-        self, bev_features: jt.Float[torch.Tensor, "B C H W"], data: dict, log: dict
+-    ) -> jt.Float[torch.Tensor, "B N D"]:
+-        """
+-        Args:
+-            bev_features: [bs, input_dim, height, width]
+-            data: dict
+-            log: dict
+-        Returns:
+-            context_tokens: [bs, num_context_tokens, transfuser_token_dim]
+-        """
+-        # Load data
+-        if self.config.use_velocity:
+-            velocity = (
+-                data["speed"]
+-                .reshape(-1, 1)
+-                .to(self.device, dtype=self.config.torch_float_type)
+-            )
+-        if self.config.use_discrete_command:
+-            command = data["command"].to(
+-                self.device, dtype=self.config.torch_float_type
+-            )
+-
+-        status_tokens = []
+-
+-        # Encode speed
+-        if self.config.use_velocity:
+-            velocity_token = self.velocity_encoder(
+-                velocity / self.config.max_speed
+-            ).reshape(
+-                -1, 1, self.config.transfuser_token_dim
+-            )  # (bs, 1, transfuser_token_dim)
+-            status_tokens.append(velocity_token)
+-
+-        # Encode command
+-        if self.config.use_discrete_command:
+-            command_token = self.command_encoder(command).reshape(
+-                -1, 1, self.config.transfuser_token_dim
+-            )  # (bs, 1, transfuser_token_dim)
+-            status_tokens.append(command_token)
+-
+-        # Concatenate status tokens if any
+-        has_statuses = False
+-        if len(status_tokens) > 0:
+-            status_tokens = torch.cat(
+-                status_tokens, dim=1
+-            )  # (bs, num_status_tokens, transfuser_token_dim)
+-            has_statuses = True
+-
+-        # Process BEV features
+-        context_tokens = self.dimension_adapter(
+-            bev_features
+-        )  # (bs, transfuser_token_dim, height, width)
+-
+-        # Concatenate and add positional embeddings
+-        if has_statuses:
+-            context_tokens = context_tokens + self.cosine_pos_embeding(
+-                context_tokens
+-            )  # (bs, transfuser_token_dim, height, width)
+-            context_tokens = torch.flatten(
+-                context_tokens, start_dim=2
+-            )  # (bs, transfuser_token_dim, height * width)
+-            context_tokens = torch.permute(
+-                context_tokens, (0, 2, 1)
+-            )  # (bs, height * width, transfuser_token_dim)
+-
+-            status_tokens = (
+-                status_tokens + self.status_pos_embedding
+-            )  # (bs, num_status_tokens, transfuser_token_dim)
+-            context_tokens = torch.cat(
+-                [context_tokens, status_tokens], dim=1
+-            )  # (bs, height * width + num_status_tokens, transfuser_token_dim)
+-
+-        return context_tokens
+-
+-
+-class PositionEmbeddingSine(nn.Module):
+-    def __init__(
+-        self,
+-        config: TrainingConfig,
+-        num_pos_feats=64,
+-        temperature=10000,
+-        normalize=False,
+-        scale=None,
+-    ):
+-        super().__init__()
+-        self.config = config
+-        self.num_pos_feats = num_pos_feats
+-        self.temperature = temperature
+-        self.normalize = normalize
+-        if scale is not None and normalize is False:
+-            raise ValueError("normalize should be True if scale is passed")
+-        if scale is None:
+-            scale = 2 * math.pi
+-        self.scale = scale
+-
+-    def forward(self, tensor: torch.Tensor):
+-        x = tensor
+-        bs, _, h, w = x.shape
+-        not_mask = torch.ones((bs, h, w), device=x.device)
+-        y_embed = not_mask.cumsum(1, dtype=torch.float32)
+-        x_embed = not_mask.cumsum(2, dtype=torch.float32)
+-        if self.normalize:
+-            eps = 1e-6
+-            y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale
+-            x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
+-
+-        dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=x.device)
+-        dim_t = self.temperature ** (
+-            2 * (torch.div(dim_t, 2, rounding_mode="floor")) / self.num_pos_feats
+-        )
+-
+-        pos_x = x_embed[:, :, :, None] / dim_t
+-        pos_y = y_embed[:, :, :, None] / dim_t
+-        pos_x = torch.stack(
+-            (pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4
+-        ).flatten(3)
+-        pos_y = torch.stack(
+-            (pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4
+-        ).flatten(3)
+-        pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
+-        return pos.to(self.config.torch_float_type).contiguous()
++import math
++
++import jaxtyping as jt
++import torch
++import torch.nn.functional as F
++from beartype import beartype
++from torch import nn
++
++from lead.common import common_utils as t_u
++from lead.training.config_training import TrainingConfig
++
++
++class TFv5PlanningDecoder(nn.Module):
++    @beartype
++    def __init__(
++        self, input_bev_channels: int, config: TrainingConfig, device: torch.device
++    ):
++        super().__init__()
++        self.device = device
++        self.config = config
++        self.planning_context_encoder = PlanningContextEncoder(
++            config=self.config,
++            input_bev_channels=input_bev_channels,
++            device=self.device,
++        )
++
++        self.query = nn.Parameter(
++            torch.zeros(
++                1,
++                self.config.num_route_points_prediction
++                + self.config.num_way_points_prediction
++                + 1,
++                self.config.transfuser_token_dim,
++            )
++        )
++
++        self.transformer_decoder = torch.nn.TransformerDecoder(
++            decoder_layer=nn.TransformerDecoderLayer(
++                self.config.transfuser_token_dim,
++                self.config.transfuser_num_bev_cross_attention_heads,
++                activation=nn.GELU(),
++                batch_first=True,
++            ),
++            num_layers=self.config.transfuser_num_bev_cross_attention_layers,
++            norm=nn.LayerNorm(self.config.transfuser_token_dim),
++        )
++
++        self.tp_encoder = nn.Linear(2, config.gru_hidden_size)
++
++        self.route_gru = torch.nn.GRU(
++            input_size=config.transfuser_token_dim,
++            hidden_size=config.gru_hidden_size,
++            batch_first=True,
++        )
++        self.route_decoder = nn.Sequential(nn.Linear(config.gru_hidden_size, 2))
++
++        self.wp_gru = torch.nn.GRU(
++            input_size=config.transfuser_token_dim,
++            hidden_size=config.gru_hidden_size,
++            batch_first=True,
++        )
++        self.wp_decoder = nn.Sequential(nn.Linear(config.gru_hidden_size, 2))
++
++        self.target_speed_decoder = nn.Sequential(
++            nn.Linear(
++                self.config.transfuser_token_dim,
++                self.config.transfuser_token_dim,
++            ),
++            nn.ReLU(inplace=True),
++            nn.Linear(self.config.transfuser_token_dim, len(self.config.target_speeds)),
++        )
++
++        self.reset_parameters()
++
++    def reset_parameters(self):
++        nn.init.uniform_(self.query)
++
++    @beartype
++    def forward(
++        self,
++        bev_features: torch.Tensor,
++        radar_logits: jt.Float[torch.Tensor, "B Q C"] | None,
++        radar_predictions: jt.Float[torch.Tensor, "B Q 4"] | None,
++        data: dict,
++        log: dict,
++    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, None]:
++        """
++        Args:
++            bev_features: [bs, input_dim, height, width]
++            radar_logits: radar classification logits (not used)
++            radar_predictions: radar box predictions (not used)
++            data: dict
++            log: dict
++        Returns:
++            route: [bs, num_route_points, 2]
++            waypoints: [bs, num_way_points, 2]
++            target_speed: [bs, len(target_speeds)] Target speed distribution
++            target_speed_scalar: [bs,] Target speed in m/s
++        """
++        context_tokens = self.planning_context_encoder(
++            bev_features=bev_features, data=data, log=log
++        )
++
++        bs = context_tokens.shape[0]
++
++        query = self.query.repeat(bs, 1, 1)
++        values = self.transformer_decoder(query, context_tokens)
++
++        # Split the queries
++        route_values, waypoints_values, speed_value = (
++            values[:, : self.config.num_route_points_prediction],
++            values[:, self.config.num_route_points_prediction : -1],
++            values[:, -1],
++        )
++        target_point = data["target_point"].to(
++            device=self.device, dtype=self.config.torch_float_type, non_blocking=True
++        )
++        hidden_state = self.tp_encoder(target_point).unsqueeze(0)
++
++        # Forward-autoregression
++        route_values, _ = self.route_gru(route_values, hidden_state)
++        waypoints_values, _ = self.wp_gru(waypoints_values, hidden_state)
++
++        route = torch.cumsum(self.route_decoder(route_values), 1)
++        waypoints = torch.cumsum(self.wp_decoder(waypoints_values), 1)
++        target_speed_dist = self.target_speed_decoder(speed_value)
++
++        return (
++            route,
++            waypoints,
++            target_speed_dist,
++            decode_two_hot(torch.softmax(target_speed_dist, dim=-1), self.config),
++            None,
++        )
++
++    @beartype
++    def compute_loss(self, predictions, data: dict, loss: dict, log: dict):
++        waypoints_label = data["future_waypoints"].to(
++            self.device, dtype=self.config.torch_float_type, non_blocking=True
++        )[:, : self.config.num_way_points_prediction]
++        target_speed_distribution = encode_two_hot(
++            data["target_speed"].to(
++                self.device, dtype=self.config.torch_float_type, non_blocking=True
++            ),
++            data["brake"].to(self.device, dtype=torch.bool, non_blocking=True),
++            self.config,
++        )
++        route_label = data["route"].to(
++            self.device, dtype=self.config.torch_float_type, non_blocking=True
++        )
++
++        loss.update(
++            {
++                "loss_tf": F.l1_loss(
++                    predictions.pred_future_waypoints, waypoints_label, reduction="none"
++                ).mean(),
++                "loss_tfpp_speed": F.cross_entropy(
++                    predictions.pred_target_speed_distribution,
++                    target_speed_distribution,
++                ),
++                "loss_tfpp": F.l1_loss(predictions.pred_route, route_label),
++            }
++        )
++
++        if (
++            "iteration" in data
++            and ((data["iteration"] + 1) % self.config.wandb_log_scalars_frequency) == 0
++        ):
++            target_speed_labels = decode_two_hot(target_speed_distribution, self.config)
++            log.update(
++                {
++                    "metric/route_ade": t_u.average_displacement_error(
++                        predictions.pred_route, route_label
++                    ),
++                    "metric/route_fde": t_u.final_displacement_error(
++                        predictions.pred_route, route_label
++                    ),
++                    "metric/target_speed_error": torch.mean(
++                        torch.abs(
++                            predictions.pred_target_speed_scalar - target_speed_labels
++                        )
++                    ).item(),
++                    "metric/target_speed_correlation": torch.corrcoef(
++                        torch.stack(
++                            [predictions.pred_target_speed_scalar, target_speed_labels]
++                        )
++                    )[0, 1].item(),
++                    "metric/waypoints_ade": t_u.average_displacement_error(
++                        predictions.pred_future_waypoints, waypoints_label
++                    ),
++                    "metric/waypoints_fde": t_u.final_displacement_error(
++                        predictions.pred_future_waypoints, waypoints_label
++                    ),
++                }
++            )
++            log["metric/tfpp_speed_error"] = log["metric/target_speed_error"]
++            log["metric/tfpp_ade"] = log["metric/route_ade"]
++            log["metric/tfpp_fde"] = log["metric/route_fde"]
++            log["metric/tf_ade"] = log["metric/waypoints_ade"]
++            log["metric/tf_fde"] = log["metric/waypoints_fde"]
++
++
++@beartype
++def decode_two_hot(
++    two_hot_label: jt.Float[torch.Tensor, "B C"], config: TrainingConfig
++) -> jt.Float[torch.Tensor, " B"]:
++    """Decode a two-hot encoded tensor into a scalar representation.
++
++    Args:
++        two_hot_label: The two-hot encoded tensor. Must be between 0 and 1 and sum to 1 along the last dimension.
++        config: The training configuration.
++
++    Returns:
++        jt.Float[torch.Tensor, " B"]: The decoded scalar tensor.
++    """
++    assert torch.all((0.0 <= two_hot_label) & (two_hot_label <= 1.0)), (
++        "Two-hot labels must be between 0 and 1"
++    )
++    assert torch.allclose(
++        torch.sum(two_hot_label, dim=-1),
++        torch.ones(
++            two_hot_label.shape[0],
++            device=two_hot_label.device,
++            dtype=two_hot_label.dtype,
++        ),
++    ), "Two-hot labels must sum to 1"
++
++    target_speeds = torch.tensor(
++        config.target_speeds, device=two_hot_label.device, dtype=two_hot_label.dtype
++    ).unsqueeze(0)
++    target_speed = (two_hot_label * target_speeds).sum(axis=-1)
++    return target_speed
++
++
++@beartype
++def encode_two_hot(
++    scalar_speed: jt.Float[torch.Tensor, " B"],
++    brake: jt.Bool[torch.Tensor, " B"],
++    config: TrainingConfig,
++) -> jt.Float[torch.Tensor, "B C"]:
++    assert all(scalar_speed >= 0.0)
++    target_speeds = torch.tensor(
++        config.target_speeds, dtype=scalar_speed.dtype, device=scalar_speed.device
++    )
++    labels = torch.zeros(
++        len(scalar_speed),
++        len(target_speeds),
++        dtype=scalar_speed.dtype,
++        device=scalar_speed.device,
++    )
++    labels[brake, 0] = 1.0
++    non_brake = ~brake
++    speeds = scalar_speed[non_brake]
++    last_bin = speeds >= target_speeds[-1]
++    labels[non_brake & (scalar_speed >= target_speeds[-1]), -1] = 1.0
++
++    # Interpolation between bins
++    interp_mask = ~last_bin
++    if interp_mask.any():
++        interp_speeds = speeds[interp_mask]
++        upper_idx = torch.searchsorted(target_speeds, interp_speeds, right=False)
++        lower_idx = upper_idx - 1
++
++        lower_val = target_speeds[lower_idx]
++        upper_val = target_speeds[upper_idx]
++
++        lower_weight = (upper_val - interp_speeds) / (upper_val - lower_val)
++        upper_weight = (interp_speeds - lower_val) / (upper_val - lower_val)
++
++        row_idx = torch.where(non_brake)[0][interp_mask]
++        labels[row_idx, lower_idx] = lower_weight
++        labels[row_idx, upper_idx] = upper_weight
++
++    return labels
++
++
++class PlanningContextEncoder(nn.Module):
++    @beartype
++    def __init__(
++        self, config: TrainingConfig, input_bev_channels: int, device: torch.device
++    ):
++        super().__init__()
++        self.device = device
++        self.config = config
++
++        self.num_status_tokens = 0
++
++        if self.config.use_velocity:
++            self.num_status_tokens += 1
++            self.velocity_encoder = nn.Sequential(
++                nn.Linear(1, self.config.transfuser_token_dim),
++            )
++            print("Model will use velocity.")
++
++        if self.config.use_discrete_command:
++            self.num_status_tokens += 1
++            self.command_encoder = nn.Sequential(
++                nn.Linear(6, self.config.transfuser_token_dim)
++            )
++            print("Model will use discrete command.")
++
++        self.cosine_pos_embeding = PositionEmbeddingSine(
++            config, self.config.transfuser_token_dim // 2, normalize=True
++        )
++        self.status_pos_embedding = nn.Parameter(
++            torch.zeros(1, self.num_status_tokens, self.config.transfuser_token_dim)
++        )
++
++        self.dimension_adapter = nn.Conv2d(
++            input_bev_channels, self.config.transfuser_token_dim, kernel_size=1
++        )
++        self.reset_parameters()
++
++    def reset_parameters(self):
++        nn.init.uniform_(self.status_pos_embedding)
++
++    @beartype
++    def forward(
++        self, bev_features: jt.Float[torch.Tensor, "B C H W"], data: dict, log: dict
++    ) -> jt.Float[torch.Tensor, "B N D"]:
++        """
++        Args:
++            bev_features: [bs, input_dim, height, width]
++            data: dict
++            log: dict
++        Returns:
++            context_tokens: [bs, num_context_tokens, transfuser_token_dim]
++        """
++        # Load data
++        if self.config.use_velocity:
++            velocity = (
++                data["speed"]
++                .reshape(-1, 1)
++                .to(self.device, dtype=self.config.torch_float_type)
++            )
++        if self.config.use_discrete_command:
++            command = data["command"].to(
++                self.device, dtype=self.config.torch_float_type
++            )
++
++        status_tokens = []
++
++        # Encode speed
++        if self.config.use_velocity:
++            velocity_token = self.velocity_encoder(
++                velocity / self.config.max_speed
++            ).reshape(
++                -1, 1, self.config.transfuser_token_dim
++            )  # (bs, 1, transfuser_token_dim)
++            status_tokens.append(velocity_token)
++
++        # Encode command
++        if self.config.use_discrete_command:
++            command_token = self.command_encoder(command).reshape(
++                -1, 1, self.config.transfuser_token_dim
++            )  # (bs, 1, transfuser_token_dim)
++            status_tokens.append(command_token)
++
++        # Concatenate status tokens if any
++        has_statuses = False
++        if len(status_tokens) > 0:
++            status_tokens = torch.cat(
++                status_tokens, dim=1
++            )  # (bs, num_status_tokens, transfuser_token_dim)
++            has_statuses = True
++
++        # Process BEV features
++        context_tokens = self.dimension_adapter(
++            bev_features
++        )  # (bs, transfuser_token_dim, height, width)
++
++        # Concatenate and add positional embeddings
++        if has_statuses:
++            context_tokens = context_tokens + self.cosine_pos_embeding(
++                context_tokens
++            )  # (bs, transfuser_token_dim, height, width)
++            context_tokens = torch.flatten(
++                context_tokens, start_dim=2
++            )  # (bs, transfuser_token_dim, height * width)
++            context_tokens = torch.permute(
++                context_tokens, (0, 2, 1)
++            )  # (bs, height * width, transfuser_token_dim)
++
++            status_tokens = (
++                status_tokens + self.status_pos_embedding
++            )  # (bs, num_status_tokens, transfuser_token_dim)
++            context_tokens = torch.cat(
++                [context_tokens, status_tokens], dim=1
++            )  # (bs, height * width + num_status_tokens, transfuser_token_dim)
++
++        return context_tokens
++
++
++class PositionEmbeddingSine(nn.Module):
++    def __init__(
++        self,
++        config: TrainingConfig,
++        num_pos_feats=64,
++        temperature=10000,
++        normalize=False,
++        scale=None,
++    ):
++        super().__init__()
++        self.config = config
++        self.num_pos_feats = num_pos_feats
++        self.temperature = temperature
++        self.normalize = normalize
++        if scale is not None and normalize is False:
++            raise ValueError("normalize should be True if scale is passed")
++        if scale is None:
++            scale = 2 * math.pi
++        self.scale = scale
++
++    def forward(self, tensor: torch.Tensor):
++        x = tensor
++        bs, _, h, w = x.shape
++        not_mask = torch.ones((bs, h, w), device=x.device)
++        y_embed = not_mask.cumsum(1, dtype=torch.float32)
++        x_embed = not_mask.cumsum(2, dtype=torch.float32)
++        if self.normalize:
++            eps = 1e-6
++            y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale
++            x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
++
++        dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=x.device)
++        dim_t = self.temperature ** (
++            2 * (torch.div(dim_t, 2, rounding_mode="floor")) / self.num_pos_feats
++        )
++
++        pos_x = x_embed[:, :, :, None] / dim_t
++        pos_y = y_embed[:, :, :, None] / dim_t
++        pos_x = torch.stack(
++            (pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4
++        ).flatten(3)
++        pos_y = torch.stack(
++            (pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4
++        ).flatten(3)
++        pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
++        return pos.to(self.config.torch_float_type).contiguous()
+diff --git a/lead/training/config_training.py b/lead/training/config_training.py
+index b13bd790..c02f1a4e 100644
+--- a/lead/training/config_training.py
++++ b/lead/training/config_training.py
+@@ -179,11 +179,11 @@ class TrainingConfig(BaseConfig):
+ 
+     # --- Training cache ---
+     # If true use training session cache. This cache reduces data loading time.
+-    use_training_session_cache = True
++    use_training_session_cache = False
+     # If true use persistent cache for training. This cache reduces heavy feature building.
+-    use_persistent_cache = True
++    use_persistent_cache = False
+     # If true force rebuild the cache for each training run.
+-    force_rebuild_data_cache = False
++    force_rebuild_data_cache = True
+ 
+     @property
+     def carla_cache_path(self):
+@@ -247,6 +247,23 @@ class TrainingConfig(BaseConfig):
+     # Maximum gradient scale we use for the gradient scaler.
+     grad_scaler_max_grad_scale = 2**16
+ 
++    # --- BridgeDrive ---
++    plan_anchor_path = "anchor_utils/anchor_data/lead_cp_kmeans_60_10.npy"
++    trajectory_sampling_num_poses: int = 10
++    tf_d_ffn: int = 1024
++    tf_d_model: int = 256
++    tf_num_head: int = 8
++    tf_dropout: float = 0.0
++    lidar_min_x: float = -32
++    lidar_max_x: float = 32
++    lidar_min_y: float = -32
++    lidar_max_y: float = 32
++    predict_ddbm: bool = True
++    ddbm_training: bool = True
++    diffusion_speed: bool = False # choose whether to use speed from diffusion
++    speed_holder: int = int(diffusion_speed)
++    step_num: int = 20 
++
+     @property
+     def sync_batchnorm(self) -> bool:
+         """If true synchronize batch normalization across distributed processes."""
+@@ -269,20 +286,21 @@ class TrainingConfig(BaseConfig):
+     def batch_size(self):
+         """Batch size for training."""
+         if not self.is_on_slurm:  # Local training
+-            return 2
++            return 64
+         return 64
+ 
+     @property
+     def torch_float_type(self):
+         """PyTorch float precision type for training."""
+-        if self.use_mixed_precision_training and self.gpu_name in ["a100", "l40s"]:
++        # if self.use_mixed_precision_training and self.gpu_name in ["a100", "l40s", "h20"]:
++        if self.use_mixed_precision_training and self.gpu_name in ["l40s"]:  
+             return torch.bfloat16
+         return torch.float32
+ 
+     @property
+     def use_mixed_precision_training(self):
+         """If true use mixed precision training."""
+-        return self.gpu_name in ["a100", "l40s"]
++        return self.gpu_name in ["a100", "l40s", "h20", "v100"]
+ 
+     @property
+     def need_grad_scaler(self):
+@@ -675,7 +693,7 @@ class TrainingConfig(BaseConfig):
+     predict_temporal_spatial_waypoints = True
+ 
+     # If true model will use the planning decoder.
+-    use_planning_decoder = False
++    use_planning_decoder = True
+ 
+     # If true will use TFv5's planning decoder
+     use_tfv5_planning_decoder = False
+@@ -933,6 +951,9 @@ class TrainingConfig(BaseConfig):
+             "loss_center_net_yaw_res": 1.0,
+             "loss_center_net_velocity": 1.0,
+             "radar_loss": 1.0,
++            # BridgeDrive
++            "loss_ddbm_reg": 1.0,
++            "loss_ddbm_cls": 1.0,        
+         }
+ 
+         if source_dataset != SourceDataset.CARLA:
+@@ -1049,6 +1070,12 @@ class TrainingConfig(BaseConfig):
+                 return "a4000"
+             elif "rtx 3080" in name:
+                 return "rtx3080"
++            elif "h20" in name:
++                return "h20"
++            elif "tesla v100-sxm2-32gb" in name: # v100
++                return "v100"
++            elif "rtx 5070" in name:   # local Blackwell laptop GPU (inference only; fp32 path)
++                return "rtx5070ti"
+             else:
+                 raise Exception(
+                     f"Unknown GPU name: {name}. Please register it in the config."
+diff --git a/lead/training/logger.py b/lead/training/logger.py
+index 56b6ef07..53efc4c6 100644
+--- a/lead/training/logger.py
++++ b/lead/training/logger.py
+@@ -8,15 +8,16 @@ from beartype import beartype
+ from torch.utils.data import DataLoader, Dataset
+ from torch.utils.tensorboard import SummaryWriter
+ 
+-from lead.tfv6.tfv6 import Prediction, TFv6
++# from lead.tfv6.tfv6 import Prediction, TFv6
++from lead.tfv6.tfv6_bridgedrive import Prediction, TFv6
+ from lead.training.config_training import TrainingConfig
+-from lead.visualization.visualizer import visualize_sample
++from lead.visualization.visualizer_bridgedrive import visualize_sample
+ 
+ LOG = logging.getLogger(__name__)
+ 
+ 
+ class Logger:
+-    @beartype
++    # @beartype 
+     def __init__(
+         self,
+         config: TrainingConfig,
+@@ -81,7 +82,7 @@ class Logger:
+             if self.tensorboard_writer is not None:
+                 self.tensorboard_writer.close()
+ 
+-    @beartype
++    # @beartype 
+     def log_train(
+         self,
+         epoch_iteration: int,

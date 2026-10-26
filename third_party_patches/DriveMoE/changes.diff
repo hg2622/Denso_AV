@@ -1,0 +1,187 @@
+diff --git a/src/agent/team_code/drivemoe_carla_agent.py b/src/agent/team_code/drivemoe_carla_agent.py
+index 51875df..e09da06 100644
+--- a/src/agent/team_code/drivemoe_carla_agent.py
++++ b/src/agent/team_code/drivemoe_carla_agent.py
+@@ -42,7 +42,7 @@ def get_entry_point():
+ 
+ class DriveMoEAgent(autonomous_agent.AutonomousAgent):
+     def load_checkpoint(self, path):
+-        data = torch.load(path, weights_only=True, map_location="cpu")
++        data = torch.load(path, weights_only=True, map_location="cpu", mmap=True)   # file-backed: the 12 GB fp32 checkpoint is not copied into RAM (30 GB box)
+         data["model"] = {k.replace("_orig_mod.", ""): v for k, v in data["model"].items()}
+         self.model.load_state_dict(data["model"], strict=True)
+     
+@@ -66,7 +66,9 @@ class DriveMoEAgent(autonomous_agent.AutonomousAgent):
+         self.config = OmegaConf.load(self.config_path)
+         self.device = torch.device(f"cuda:{self.config.gpu_id}")
+         self.dtype = torch.bfloat16 if self.config.get("use_bf16", False) else torch.float32
++        if self.dtype == torch.bfloat16: torch.set_default_dtype(torch.bfloat16)   # build in bf16 (6 GB) instead of fp32 (12 GB) then cast
+         self.model = DriveMoE(self.config, use_ddp=False)
++        torch.set_default_dtype(torch.float32)
+         self.load_checkpoint(self.config.checkpoint_path)
+         self.model.freeze_all_weights()
+         self.model.to(self.dtype)
+@@ -129,49 +131,49 @@ class DriveMoEAgent(autonomous_agent.AutonomousAgent):
+         self.initialized = True
+         self.metric_info = {}   
+     
+-    def sensors(self):
++    def sensors(self):   # local: cameras at 800x450 instead of the dataset's 1600x900 (the model resizes to 224x224; N x 1600x900 exhausted CARLA's VRAM)
+         sensors = [
+             # camera rgb
+             {
+                 'type': 'sensor.camera.rgb',
+                 'x': 0.80, 'y': 0.0, 'z': 1.60,
+                 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+-                'width': 1600, 'height': 900, 'fov': 70,
++                'width': 800, 'height': 450, 'fov': 70,
+                 'id': 'CAM_FRONT'
+                 },
+             {
+                 'type': 'sensor.camera.rgb',
+                 'x': 0.27, 'y': -0.55, 'z': 1.60,
+                 'roll': 0.0, 'pitch': 0.0, 'yaw': -55.0,
+-                'width': 1600, 'height': 900, 'fov': 70,
++                'width': 800, 'height': 450, 'fov': 70,
+                 'id': 'CAM_FRONT_LEFT'
+                 },
+             {
+                 'type': 'sensor.camera.rgb',
+                 'x': 0.27, 'y': 0.55, 'z': 1.60,
+                 'roll': 0.0, 'pitch': 0.0, 'yaw': 55.0,
+-                'width': 1600, 'height': 900, 'fov': 70,
++                'width': 800, 'height': 450, 'fov': 70,
+                 'id': 'CAM_FRONT_RIGHT'
+                 },
+             {
+                 'type': 'sensor.camera.rgb',
+                 'x': -2.0, 'y': 0.0, 'z': 1.60,
+                 'roll': 0.0, 'pitch': 0.0, 'yaw': 180.0,
+-                'width': 1600, 'height': 900, 'fov': 110,
++                'width': 800, 'height': 450, 'fov': 110,
+                 'id': 'CAM_BACK'
+                 },
+             {
+                 'type': 'sensor.camera.rgb',
+                 'x': -0.32, 'y': -0.55, 'z': 1.60,
+                 'roll': 0.0, 'pitch': 0.0, 'yaw': -110.0,
+-                'width': 1600, 'height': 900, 'fov': 70,
++                'width': 800, 'height': 450, 'fov': 70,
+                 'id': 'CAM_BACK_LEFT'
+                 },
+             {
+                 'type': 'sensor.camera.rgb',
+                 'x': -0.32, 'y': 0.55, 'z': 1.60,
+                 'roll': 0.0, 'pitch': 0.0, 'yaw': 110.0,
+-                'width': 1600, 'height': 900, 'fov': 70,
++                'width': 800, 'height': 450, 'fov': 70,
+                 'id': 'CAM_BACK_RIGHT'
+                 },
+             # gps
+@@ -387,7 +389,7 @@ class DriveMoEAgent(autonomous_agent.AutonomousAgent):
+         inputs["action_mask"] = action_mask
+         inputs = {k: v.to(self.device) for k, v in inputs.items()}
+         pred, _, _ = self.model.infer_action(**inputs)
+-        x_pred, y_pred = normalize.infer_traj(pred)
++        x_pred, y_pred = normalize.infer_traj(pred.float())
+         # move to cpu
+         x_pred = x_pred.cpu()
+         y_pred = y_pred.cpu()
+@@ -438,6 +440,12 @@ class DriveMoEAgent(autonomous_agent.AutonomousAgent):
+         if SAVE_PATH is not None and (self.step -  self.data_queue_len) % 2 == 0:
+             self.save(tick_data, pred)
+ 
++        if os.environ.get('AGENT_TRACE'):   # per-tick trace for annotate_run.py (ego frame: x forward, y right = CARLA convention)
++            with open(os.environ['AGENT_TRACE'], 'a') as _f:
++                _md = {k: float(v) for k, v in self.pid_metadata.items() if isinstance(v, (int, float, np.floating, np.integer))}
++                _f.write(json.dumps({'step': self.step, 't': float(timestamp), 'speed': float(speed), 'desired': float(_md.get('target_speed', _md.get('desired_speed', 0.0))),
++                                     'throttle': float(control.throttle), 'brake': float(control.brake), 'steer': float(control.steer),
++                                     'route': np.round(pred, 2).tolist(), 'speed_wps': [], 'text': '', 'meta': _md}) + '\n')
+         self.last_control = control
+         return control
+ 
+diff --git a/src/agent/team_code/drivepi0_carla_agent.py b/src/agent/team_code/drivepi0_carla_agent.py
+index ca65c90..a56dec7 100644
+--- a/src/agent/team_code/drivepi0_carla_agent.py
++++ b/src/agent/team_code/drivepi0_carla_agent.py
+@@ -43,7 +43,7 @@ def get_entry_point():
+ 
+ class DrivePiZeroAgent(autonomous_agent.AutonomousAgent):
+     def load_checkpoint(self, path):
+-        data = torch.load(path, weights_only=True, map_location="cpu")
++        data = torch.load(path, weights_only=True, map_location="cpu", mmap=True)   # file-backed: the 12 GB fp32 checkpoint is not copied into RAM (30 GB box)
+         data["model"] = {k.replace("_orig_mod.", ""): v for k, v in data["model"].items()}
+         self.model.load_state_dict(data["model"], strict=True)
+     
+@@ -67,7 +67,9 @@ class DrivePiZeroAgent(autonomous_agent.AutonomousAgent):
+         self.config = OmegaConf.load(self.config_path)
+         self.device = torch.device(f"cuda:{self.config.gpu_id}")
+         self.dtype = torch.bfloat16 if self.config.get("use_bf16", False) else torch.float32
++        if self.dtype == torch.bfloat16: torch.set_default_dtype(torch.bfloat16)   # build in bf16 (6 GB) instead of fp32 (12 GB) then cast
+         self.model = DrivePiZeroInference(self.config, use_ddp=False)
++        torch.set_default_dtype(torch.float32)
+         self.load_checkpoint(self.config.checkpoint_path)
+         self.model.freeze_all_weights()
+         self.model.to(self.dtype)
+@@ -131,21 +133,21 @@ class DrivePiZeroAgent(autonomous_agent.AutonomousAgent):
+         self.initialized = True
+         self.metric_info = {}
+     
+-    def sensors(self):
++    def sensors(self):   # local: cameras at 800x450 instead of the dataset's 1600x900 (the model resizes to 224x224; N x 1600x900 exhausted CARLA's VRAM)
+         sensors = [
+             # camera rgb
+             {
+                 'type': 'sensor.camera.rgb',
+                 'x': 0.80, 'y': 0.0, 'z': 1.60,
+                 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+-                'width': 1600, 'height': 900, 'fov': 70,
++                'width': 800, 'height': 450, 'fov': 70,
+                 'id': 'CAM_FRONT'
+                 },
+             {
+                 'type': 'sensor.camera.rgb',
+                 'x': -2.0, 'y': 0.0, 'z': 1.60,
+                 'roll': 0.0, 'pitch': 0.0, 'yaw': 180.0,
+-                'width': 1600, 'height': 900, 'fov': 110,
++                'width': 800, 'height': 450, 'fov': 110,
+                 'id': 'CAM_BACK'
+                 },
+             # gps
+@@ -320,7 +322,7 @@ class DrivePiZeroAgent(autonomous_agent.AutonomousAgent):
+         inputs["action_mask"] = action_mask
+         inputs = {k: v.to(self.device) for k, v in inputs.items()}
+         pred = self.model.infer_action(**inputs)
+-        x_pred, y_pred = state_normalize.infer_traj(pred)
++        x_pred, y_pred = state_normalize.infer_traj(pred.float())
+         # move to cpu
+         x_pred = x_pred.cpu()
+         y_pred = y_pred.cpu()
+@@ -371,6 +373,12 @@ class DrivePiZeroAgent(autonomous_agent.AutonomousAgent):
+         if SAVE_PATH is not None and (self.step -  self.data_queue_len) % 2 == 0:
+             self.save(tick_data, pred)
+ 
++        if os.environ.get('AGENT_TRACE'):   # per-tick trace for annotate_run.py (ego frame: x forward, y right = CARLA convention)
++            with open(os.environ['AGENT_TRACE'], 'a') as _f:
++                _md = {k: float(v) for k, v in self.pid_metadata.items() if isinstance(v, (int, float, np.floating, np.integer))}
++                _f.write(json.dumps({'step': self.step, 't': float(timestamp), 'speed': float(speed), 'desired': float(_md.get('target_speed', _md.get('desired_speed', 0.0))),
++                                     'throttle': float(control.throttle), 'brake': float(control.brake), 'steer': float(control.steer),
++                                     'route': np.round(pred, 2).tolist(), 'speed_wps': [], 'text': '', 'meta': _md}) + '\n')
+         self.last_control = control
+         return control
+     
+diff --git a/src/model/lora.py b/src/model/lora.py
+index a7fa483..32bf870 100644
+--- a/src/model/lora.py
++++ b/src/model/lora.py
+@@ -1,6 +1,10 @@
+ import logging
+ import torch.nn as nn
+ import torch.nn.functional as F
++try:
++    from bitsandbytes.nn import Linear4bit   # quantize=True path (the upstream file never imported it)
++except ImportError:
++    Linear4bit = None
+ 
+ logger = logging.getLogger(__name__)
+ 

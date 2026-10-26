@@ -1,0 +1,2 @@
+url: https://github.com/Thinklab-SJTU/DriveMoE.git
+commit: e39df2f610b8ebc09efaab510abd65d3ebf38e55

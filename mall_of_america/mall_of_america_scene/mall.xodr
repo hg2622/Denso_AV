@@ -1,0 +1,500 @@
+<?xml version='1.0' encoding='utf-8'?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="4" name="Mall approximation" version="1.00" date="2026-10-16" north="450" south="-270" east="340" west="-340" />
+  <road name="Access loop 1" length="540" id="1" junction="-1">
+    <link>
+      <predecessor elementType="road" elementId="8" contactPoint="end" />
+      <successor elementType="road" elementId="2" contactPoint="start" />
+    </link>
+    <type s="0" type="town">
+      <speed max="20" unit="mph" />
+    </type>
+    <planView>
+      <geometry s="0" x="-270" y="-225" hdg="0" length="540">
+        <line />
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0" a="0" b="0" c="0" d="0" />
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0">
+        <left>
+          <lane id="1" type="driving" level="false">
+            <link>
+              <predecessor id="1" />
+              <successor id="1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="2" />
+              <successor id="2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0" type="solid" weight="standard" color="yellow" width="0.12" />
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1" />
+              <successor id="-1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="-2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="-2" />
+              <successor id="-2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road name="Access loop 2" length="47.12388980384689" id="2" junction="-1">
+    <link>
+      <predecessor elementType="road" elementId="1" contactPoint="end" />
+      <successor elementType="road" elementId="3" contactPoint="start" />
+    </link>
+    <type s="0" type="town">
+      <speed max="20" unit="mph" />
+    </type>
+    <planView>
+      <geometry s="0" x="270" y="-225" hdg="0" length="47.12388980384689">
+        <arc curvature="0.03333333333333333" />
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0" a="0" b="0" c="0" d="0" />
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0">
+        <left>
+          <lane id="1" type="driving" level="false">
+            <link>
+              <predecessor id="1" />
+              <successor id="1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="2" />
+              <successor id="2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0" type="solid" weight="standard" color="yellow" width="0.12" />
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1" />
+              <successor id="-1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="-2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="-2" />
+              <successor id="-2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road name="Access loop 3" length="390" id="3" junction="-1">
+    <link>
+      <predecessor elementType="road" elementId="2" contactPoint="end" />
+      <successor elementType="road" elementId="4" contactPoint="start" />
+    </link>
+    <type s="0" type="town">
+      <speed max="20" unit="mph" />
+    </type>
+    <planView>
+      <geometry s="0" x="300" y="-195" hdg="1.5707963267948966" length="390">
+        <line />
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0" a="0" b="0" c="0" d="0" />
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0">
+        <left>
+          <lane id="1" type="driving" level="false">
+            <link>
+              <predecessor id="1" />
+              <successor id="1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="2" />
+              <successor id="2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0" type="solid" weight="standard" color="yellow" width="0.12" />
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1" />
+              <successor id="-1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="-2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="-2" />
+              <successor id="-2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road name="Access loop 4" length="47.12388980384689" id="4" junction="-1">
+    <link>
+      <predecessor elementType="road" elementId="3" contactPoint="end" />
+      <successor elementType="road" elementId="5" contactPoint="start" />
+    </link>
+    <type s="0" type="town">
+      <speed max="20" unit="mph" />
+    </type>
+    <planView>
+      <geometry s="0" x="300" y="195" hdg="1.5707963267948966" length="47.12388980384689">
+        <arc curvature="0.03333333333333333" />
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0" a="0" b="0" c="0" d="0" />
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0">
+        <left>
+          <lane id="1" type="driving" level="false">
+            <link>
+              <predecessor id="1" />
+              <successor id="1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="2" />
+              <successor id="2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0" type="solid" weight="standard" color="yellow" width="0.12" />
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1" />
+              <successor id="-1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="-2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="-2" />
+              <successor id="-2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road name="Access loop 5" length="540" id="5" junction="-1">
+    <link>
+      <predecessor elementType="road" elementId="4" contactPoint="end" />
+      <successor elementType="road" elementId="6" contactPoint="start" />
+    </link>
+    <type s="0" type="town">
+      <speed max="20" unit="mph" />
+    </type>
+    <planView>
+      <geometry s="0" x="270" y="225" hdg="3.141592653589793" length="540">
+        <line />
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0" a="0" b="0" c="0" d="0" />
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0">
+        <left>
+          <lane id="1" type="driving" level="false">
+            <link>
+              <predecessor id="1" />
+              <successor id="1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="2" />
+              <successor id="2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0" type="solid" weight="standard" color="yellow" width="0.12" />
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1" />
+              <successor id="-1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="-2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="-2" />
+              <successor id="-2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road name="Access loop 6" length="47.12388980384689" id="6" junction="-1">
+    <link>
+      <predecessor elementType="road" elementId="5" contactPoint="end" />
+      <successor elementType="road" elementId="7" contactPoint="start" />
+    </link>
+    <type s="0" type="town">
+      <speed max="20" unit="mph" />
+    </type>
+    <planView>
+      <geometry s="0" x="-270" y="225" hdg="3.141592653589793" length="47.12388980384689">
+        <arc curvature="0.03333333333333333" />
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0" a="0" b="0" c="0" d="0" />
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0">
+        <left>
+          <lane id="1" type="driving" level="false">
+            <link>
+              <predecessor id="1" />
+              <successor id="1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="2" />
+              <successor id="2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0" type="solid" weight="standard" color="yellow" width="0.12" />
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1" />
+              <successor id="-1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="-2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="-2" />
+              <successor id="-2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road name="Access loop 7" length="390" id="7" junction="-1">
+    <link>
+      <predecessor elementType="road" elementId="6" contactPoint="end" />
+      <successor elementType="road" elementId="8" contactPoint="start" />
+    </link>
+    <type s="0" type="town">
+      <speed max="20" unit="mph" />
+    </type>
+    <planView>
+      <geometry s="0" x="-300" y="195" hdg="4.71238898038469" length="390">
+        <line />
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0" a="0" b="0" c="0" d="0" />
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0">
+        <left>
+          <lane id="1" type="driving" level="false">
+            <link>
+              <predecessor id="1" />
+              <successor id="1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="2" />
+              <successor id="2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0" type="solid" weight="standard" color="yellow" width="0.12" />
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1" />
+              <successor id="-1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="-2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="-2" />
+              <successor id="-2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road name="Access loop 8" length="47.12388980384689" id="8" junction="-1">
+    <link>
+      <predecessor elementType="road" elementId="7" contactPoint="end" />
+      <successor elementType="road" elementId="1" contactPoint="start" />
+    </link>
+    <type s="0" type="town">
+      <speed max="20" unit="mph" />
+    </type>
+    <planView>
+      <geometry s="0" x="-300" y="-195" hdg="4.71238898038469" length="47.12388980384689">
+        <arc curvature="0.03333333333333333" />
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0" a="0" b="0" c="0" d="0" />
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0">
+        <left>
+          <lane id="1" type="driving" level="false">
+            <link>
+              <predecessor id="1" />
+              <successor id="1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="2" />
+              <successor id="2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0" type="solid" weight="standard" color="yellow" width="0.12" />
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1" />
+              <successor id="-1" />
+            </link>
+            <width sOffset="0" a="3.5" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+          <lane id="-2" type="sidewalk" level="false">
+            <link>
+              <predecessor id="-2" />
+              <successor id="-2" />
+            </link>
+            <width sOffset="0" a="2" b="0" c="0" d="0" />
+            <roadMark sOffset="0" type="solid" weight="standard" color="white" width="0.12" />
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

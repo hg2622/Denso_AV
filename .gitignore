@@ -1,0 +1,41 @@
+# Whitelist repo: everything is ignored unless listed below. Datasets, checkpoints, the CARLA binary, the baseline clones,
+# logs, videos, images and generated site data never enter git. Code, launchers, scene definitions and docs do.
+/*
+!/.gitignore
+!/README.md
+!/SETUP.txt
+!/COMMANDS.txt
+!/BENCH2DRIVE_ROUTES.md
+!/tour44_routes.txt
+!/*.py
+!/*.sh
+!/env/
+!/scenes/
+!/npc_tracks/
+!/geo_scenes/
+!/third_party_patches/
+!/mall_of_america/
+!/denso_presentaiton/
+!/routes_lb1/
+
+# inside the allowed folders
+# built sites (osm, imagery, detections, xodr) are data
+/geo_scenes/*/
+/geo_scenes/__pycache__/
+/mall_of_america/**/preview.png
+/denso_presentaiton/**/*.png
+/routes_lb1/*.json
+/third_party_patches/**/__pycache__/
+/npc_tracks/*.png
+*.bak_v*
+*_v1.py
+*.disabled
+__pycache__/
+*.pyc
+*.log
+*.mp4
+*.avi
+*.pt
+*.pth
+*.ckpt
+*.egg-info/
