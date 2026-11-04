@@ -1,0 +1,331 @@
+diff --git a/rift/cbv/planning/fine_tuner/rlft/ppo_pluto/ppo_pluto.py b/rift/cbv/planning/fine_tuner/rlft/ppo_pluto/ppo_pluto.py
+index a2ca62d..445f9cb 100644
+--- a/rift/cbv/planning/fine_tuner/rlft/ppo_pluto/ppo_pluto.py
++++ b/rift/cbv/planning/fine_tuner/rlft/ppo_pluto/ppo_pluto.py
+@@ -110,7 +110,7 @@ class PPOPluto(RLFTPluto):
+         self.logger.log('>> Finishing fine-tuning...', color='yellow')
+     
+     def load_infer_checkpoint(self, checkpoint: str, device_name: str):
+-        ckpt = torch.load(checkpoint, map_location=device_name)
++        ckpt = torch.load(checkpoint, map_location=device_name, weights_only=False)
+         state_dict = {k.replace("model.", ""): v for k, v in ckpt["state_dict"].items()}
+         
+         # inference model don't need the value net
+diff --git a/rift/cbv/planning/fine_tuner/sft/rtr_pluto/rtr_pluto.py b/rift/cbv/planning/fine_tuner/sft/rtr_pluto/rtr_pluto.py
+index 6b75571..4bd0dd9 100644
+--- a/rift/cbv/planning/fine_tuner/sft/rtr_pluto/rtr_pluto.py
++++ b/rift/cbv/planning/fine_tuner/sft/rtr_pluto/rtr_pluto.py
+@@ -215,7 +215,7 @@ class RTRPluto(SFTPluto):
+         self.logger.log('>> Finishing fine-tuning...', color='yellow')
+ 
+     def load_infer_checkpoint(self, checkpoint: str, device_name: str):
+-        ckpt = torch.load(checkpoint, map_location=device_name)
++        ckpt = torch.load(checkpoint, map_location=device_name, weights_only=False)
+         state_dict = {k.replace("model.", ""): v for k, v in ckpt["state_dict"].items()}
+         
+         # inference model don't need the value net
+diff --git a/rift/cbv/planning/pluto/model/layers/embedding.py b/rift/cbv/planning/pluto/model/layers/embedding.py
+index a54931b..6e2341c 100644
+--- a/rift/cbv/planning/pluto/model/layers/embedding.py
++++ b/rift/cbv/planning/pluto/model/layers/embedding.py
+@@ -1,7 +1,9 @@
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+-from natten import NeighborhoodAttention1D
++# natten >= 0.20 dropped relative positional bias, but the released Pluto checkpoints carry trained `attn.rpb`
++# weights. Use a local layer that keeps them (verified bit-exact against natten 0.17.5 on the shapes used here).
++from rift.cbv.planning.pluto.model.layers.na1d_rpb import NeighborhoodAttention1DRPB
+ from timm.layers import DropPath
+ 
+ 
+@@ -166,15 +168,9 @@ class NATLayer(nn.Module):
+         self.mlp_ratio = mlp_ratio
+ 
+         self.norm1 = norm_layer(dim)
+-        self.attn = NeighborhoodAttention1D(
+-            dim,
+-            kernel_size=kernel_size,
+-            dilation=dilation,
+-            num_heads=num_heads,
+-            qkv_bias=qkv_bias,
+-            qk_scale=qk_scale,
+-            attn_drop=attn_drop,
+-            proj_drop=drop,
++        self.attn = NeighborhoodAttention1DRPB(
++            dim, num_heads=num_heads, kernel_size=kernel_size, dilation=dilation,
++            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
+         )
+ 
+         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+diff --git a/rift/cbv/planning/pluto/pluto.py b/rift/cbv/planning/pluto/pluto.py
+index be9f999..2fbf637 100644
+--- a/rift/cbv/planning/pluto/pluto.py
++++ b/rift/cbv/planning/pluto/pluto.py
+@@ -128,12 +128,12 @@ class PLUTO(CBVBasePolicy):
+         return self._render_data[env_id]
+ 
+     def load_infer_checkpoint(self, checkpoint: str, device_name: str):
+-        ckpt = torch.load(checkpoint, map_location=device_name)
++        ckpt = torch.load(checkpoint, map_location=device_name, weights_only=False)
+         state_dict = {k.replace("model.", ""): v for k, v in ckpt["state_dict"].items()}
+         return state_dict
+     
+     def load_train_checkpoint(self, checkpoint: str, device_name: str):
+-        ckpt = torch.load(checkpoint, map_location=device_name)
++        ckpt = torch.load(checkpoint, map_location=device_name, weights_only=False)
+         return ckpt['state_dict']
+ 
+     def load_model(self, resume=True):
+diff --git a/rift/cbv/planning/rl/ppo.py b/rift/cbv/planning/rl/ppo.py
+index e43ab75..400a405 100644
+--- a/rift/cbv/planning/rl/ppo.py
++++ b/rift/cbv/planning/rl/ppo.py
+@@ -290,7 +290,7 @@ class PPO(CBVBasePolicy):
+             filepath = load_dir / f"model_{self.name}_{self.model_type}_{episode:04}.torch"
+             self.logger.log(f">> Loading {self.name} model from {filepath}", 'yellow')
+ 
+-            checkpoint = torch.load(filepath)
++            checkpoint = torch.load(filepath, weights_only=False)
+             self.policy.load_state_dict(checkpoint['policy'])
+             self.value.load_state_dict(checkpoint['value'])
+             self.policy_optim.load_state_dict(checkpoint['policy_optim'])
+@@ -305,7 +305,7 @@ class PPO(CBVBasePolicy):
+             else:
+                 filepath = self.model_path / f"model_{self.name}_cbv_pretrain.torch"
+                 self.logger.log(f">> Loading {self.name} pretrain model from {filepath}", 'yellow')
+-                checkpoint = torch.load(filepath)
++                checkpoint = torch.load(filepath, weights_only=False)
+                 # load the pretrain model
+                 self.policy.load_state_dict(checkpoint['policy'])
+                 self.value.load_state_dict(checkpoint['value'])
+diff --git a/rift/cbv/recognition/base_cbv.py b/rift/cbv/recognition/base_cbv.py
+index 54a5b97..5eabcf5 100644
+--- a/rift/cbv/recognition/base_cbv.py
++++ b/rift/cbv/recognition/base_cbv.py
+@@ -6,6 +6,7 @@
+ """
+ 
+ 
++import os
+ from collections import deque
+ import math
+ import carla
+@@ -33,8 +34,15 @@ class BaseCBVRecog:
+         # use different config for different mode
+         self.mode = mode
+ 
+-        # CBV spawn and activation parameters
+-        mode_config = self.config[self.mode]
++        # RIFT_CBV_PROFILE overrides which block of the recognition config is used. The 'eval' numbers assume a model
++        # ego driving at a steady pace; a human ego needs the wider 'human' gates or almost no NPC is ever taken over.
++        profile = os.environ.get('RIFT_CBV_PROFILE', '')
++        if profile and profile in self.config:
++            if profile != self.mode:
++                print(f">> CBV selection profile: '{profile}' (instead of '{self.mode}')", flush=True)
++            mode_config = self.config[profile]
++        else:
++            mode_config = self.config[self.mode]
+         self.spawn_radius = mode_config['spawn_radius']
+         self.activate_radius = mode_config['activate_radius']
+         self.coord_interval = mode_config['coord_interval']
+@@ -73,8 +81,15 @@ class BaseCBVRecog:
+         Returns:
+             A sorted list of candidate vehicles, ordered by distance from the ego vehicle (closest first).
+         """
+-        # Get IDs of currently selected CBVs and those that have already reached the goal
+-        CBVs_reach_goal_id = set(CarlaDataProvider.get_CBVs_reach_goal_by_ego(ego_vehicle.id).keys())
++        # Get IDs of currently selected CBVs and those that have already reached the goal.
++        # A CBV is retired the moment it runs out of route to its interaction point, and is then barred from ever being
++        # selected again. Against a slower (human) ego the NPCs reach those points while the ego is still far behind, so
++        # the candidate pool drains and no adversary is ever taken over again. RIFT_CBV_REUSE=1 lets a retired vehicle
++        # be picked up again once it is a fresh candidate, which keeps traffic adversarial for a whole human drive.
++        if os.environ.get('RIFT_CBV_REUSE') == '1':
++            CBVs_reach_goal_id = set()
++        else:
++            CBVs_reach_goal_id = set(CarlaDataProvider.get_CBVs_reach_goal_by_ego(ego_vehicle.id).keys())
+ 
+         # If the maximum number of CBVs is already selected, return an empty list
+         if len(CBVs_id) >= self.max_agent_num:
+diff --git a/rift/cbv/recognition/config/rule.yaml b/rift/cbv/recognition/config/rule.yaml
+index 3d2e2bd..c2e40ae 100644
+--- a/rift/cbv/recognition/config/rule.yaml
++++ b/rift/cbv/recognition/config/rule.yaml
+@@ -28,4 +28,20 @@ eval:
+   max_agent_num: 2
+   down_sample_step: 4
+ 
+-
++# Profile for a HUMAN-driven ego (rift_drive.sh). The eval numbers above are tuned for a model that drives at a steady,
++# confident pace: a candidate only qualifies if its path length to an interaction point is within
++# min_interaction_dis_diff of the ego's, so a person who slows down, looks around or drives cautiously falls outside
++# that window and almost no NPC is ever taken over. This profile widens the gate and allows more concurrent CBVs.
++human:
++  spawn_radius: 50
++  traffic_intensity: 0.8        # denser traffic -> more candidates to choose from
++  activate_radius: 150
++  coord_interval: 60
++  search_radius: 80             # look further for candidates (was 60)
++  max_interaction_fov: 180      # a candidate may approach from any forward angle (was 150)
++  max_interaction_dis: 110      # interaction point may be further along the route (was 90)
++  min_interaction_dis_diff: 60  # KEY: tolerate a much larger arrival-distance mismatch (was 20)
++  max_route_len: 400
++  max_ego_route_len: 80         # consider more of the ego's remaining route (was 50)
++  max_agent_num: 4              # up to 4 adversaries at once (was 2)
++  down_sample_step: 4
+diff --git a/rift/ego/__init__.py b/rift/ego/__init__.py
+index af506ba..c818d5d 100644
+--- a/rift/ego/__init__.py
++++ b/rift/ego/__init__.py
+@@ -7,13 +7,22 @@
+ 
+ # for planning scenario
+ 
+-from rift.ego.b2d.e2e_agent import VAD, SparseDrive, UniAD
++# OPTIONAL E2E: the end-to-end agents (VAD / UniAD / SparseDrive) need the b2d package, i.e. mmcv plus compiled CUDA
++# ops. Import them lazily so the rule-based and RL egos run without that toolchain; the registry omits what is missing.
++try:
++    from rift.ego.b2d.e2e_agent import VAD, SparseDrive, UniAD
++    _E2E_OK = True
++except Exception as _e2e_err:
++    _E2E_OK = False
++    print("[rift.ego] end-to-end agents unavailable (%s: %s); the vad / uniad / sparsedrive configs are disabled"
++          % (type(_e2e_err).__name__, _e2e_err), flush=True)
+ from rift.ego.rl.ppo import PPO
+ from rift.ego.behavior import Behavior
+ from rift.ego.expert_disturb import ExpertDisturb
+ from rift.ego.expert.expert import Expert
+ from rift.ego.plant.plant import PlanT
+ from rift.ego.pdm_lite.pdm_lite import PDM_LITE
++from rift.ego.manual import Manual   # human-driven ego (keyboard + camera window)
+ 
+ 
+ EGO_POLICY_LIST = {
+@@ -23,7 +32,8 @@ EGO_POLICY_LIST = {
+     'plant': PlanT,
+     'expert_disturb': ExpertDisturb,
+     'pdm_lite': PDM_LITE,
+-    'vad': VAD,
+-    'uniad': UniAD,
+-    'sparsedrive': SparseDrive,
++    'manual': Manual,
+ }
++
++if _E2E_OK:
++    EGO_POLICY_LIST.update({'vad': VAD, 'uniad': UniAD, 'sparsedrive': SparseDrive})
+diff --git a/rift/ego/b2d/mmcv/utils/checkpoint.py b/rift/ego/b2d/mmcv/utils/checkpoint.py
+index 314be30..f23bdc8 100644
+--- a/rift/ego/b2d/mmcv/utils/checkpoint.py
++++ b/rift/ego/b2d/mmcv/utils/checkpoint.py
+@@ -39,7 +39,7 @@ def load_checkpoint(model,
+     """
+     if not osp.isfile(filename):
+         raise IOError(f'{filename} is not a checkpoint file')
+-    checkpoint = torch.load(filename, map_location=map_location)
++    checkpoint = torch.load(filename, map_location=map_location, weights_only=False)
+     # OrderedDict is a subclass of dict
+     if not isinstance(checkpoint, dict):
+         raise RuntimeError(
+diff --git a/rift/ego/b2d/mmcv/utils/hub.py b/rift/ego/b2d/mmcv/utils/hub.py
+index a2505c0..0717c4e 100644
+--- a/rift/ego/b2d/mmcv/utils/hub.py
++++ b/rift/ego/b2d/mmcv/utils/hub.py
+@@ -45,7 +45,7 @@ if digit_version(TORCH_VERSION) < digit_version('1.7.0'):
+             f.extractall(model_dir)
+             extraced_name = members[0].filename
+             extracted_file = os.path.join(model_dir, extraced_name)
+-        return torch.load(extracted_file, map_location=map_location)
++        return torch.load(extracted_file, map_location=map_location, weights_only=False)
+ 
+     def load_url(url,
+                  model_dir=None,
+@@ -113,7 +113,7 @@ if digit_version(TORCH_VERSION) < digit_version('1.7.0'):
+             return _legacy_zip_load(cached_file, model_dir, map_location)
+ 
+         try:
+-            return torch.load(cached_file, map_location=map_location)
++            return torch.load(cached_file, map_location=map_location, weights_only=False)
+         except RuntimeError as error:
+             if digit_version(TORCH_VERSION) < digit_version('1.5.0'):
+                 warnings.warn(
+diff --git a/rift/ego/rl/ppo.py b/rift/ego/rl/ppo.py
+index 0b7bea8..312e9ba 100644
+--- a/rift/ego/rl/ppo.py
++++ b/rift/ego/rl/ppo.py
+@@ -246,7 +246,7 @@ class PPO(EgoBasePolicy):
+             filepath = load_dir / f"model_{self.name}_{self.model_type}_{episode:04}.torch"
+             self.logger.log(f">> Loading {self.name} model from {filepath}", 'yellow')
+ 
+-            checkpoint = torch.load(filepath)
++            checkpoint = torch.load(filepath, weights_only=False)
+             self.policy.load_state_dict(checkpoint['policy'])
+             self.value.load_state_dict(checkpoint['value'])
+             self.policy_optim.load_state_dict(checkpoint['policy_optim'])
+diff --git a/rift/gym_carla/action/ego_action.py b/rift/gym_carla/action/ego_action.py
+index ef419ac..b225c42 100644
+--- a/rift/gym_carla/action/ego_action.py
++++ b/rift/gym_carla/action/ego_action.py
+@@ -60,7 +60,10 @@ class EgoAction(BaseAction):
+         return [reverse, throttle, steer, brake]
+ 
+     def convert_rule_action(self, action):
+-        return [False, action[0], action[1], action[2]]
++        # a 4th element, when present, is an explicit reverse flag (used by the human-driven ego so Q can select the
++        # gear); rule-based model egos pass 3 elements and keep driving forward as before.
++        reverse = bool(action[3]) if len(action) > 3 else False
++        return [reverse, action[0], action[1], action[2]]
+ 
+     def inverse_action(self, reverse, throttle, steer, brake, allow_reverse=False, learnable=False):
+         if learnable:
+diff --git a/rift/gym_carla/visualization/video_render.py b/rift/gym_carla/visualization/video_render.py
+index d9d4b2c..4881e46 100644
+--- a/rift/gym_carla/visualization/video_render.py
++++ b/rift/gym_carla/visualization/video_render.py
+@@ -45,6 +45,10 @@ class VideoRender():
+         return self.BEV_image_dict[index][-1]
+ 
+     def save_video(self, map_name):
++        # close() calls this during cleanup, which may happen before any map was loaded (e.g. the model failed to load);
++        # map_name is then None and the path join raises, masking the real error. Nothing was recorded, so just return.
++        if map_name is None or not self.BEV_image_dict:
++            return
+         video_dir = self.output_dir / map_name / "videos"
+ 
+         Path(video_dir).mkdir(exist_ok=True, parents=True)
+diff --git a/rift/scenario/scenario_manager/route_scenario.py b/rift/scenario/scenario_manager/route_scenario.py
+index ab41d61..7754da0 100644
+--- a/rift/scenario/scenario_manager/route_scenario.py
++++ b/rift/scenario/scenario_manager/route_scenario.py
+@@ -4,6 +4,7 @@
+ @File    : route_scenario.py
+ @Date    : 2023/10/4
+ """
++import os
+ from collections import defaultdict
+ from typing import Dict
+ import py_trees
+@@ -213,7 +214,10 @@ class RouteScenario():
+         criteria.add_child(RouteCompletionTest(self.ego_vehicle, route=self.route))
+         criteria.add_child(OutsideRouteLanesTest(self.ego_vehicle, route=self.route))
+         criteria.add_child(CollisionTest(self.ego_vehicle, name="CollisionTest"))
+-        criteria.add_child(ActorBlockedTest(self.ego_vehicle, min_speed=0.1, max_time=3.0, terminate_on_failure=True, name="AgentBlockedTest"))
++        # A human driver needs a moment before pulling away, and may legitimately stop; 3 s of standstill ending the
++        # route makes manual driving impossible. RIFT_BLOCKED_TIME (seconds) raises the limit; the launcher sets it.
++        _blocked_time = float(os.environ.get("RIFT_BLOCKED_TIME", 3.0))
++        criteria.add_child(ActorBlockedTest(self.ego_vehicle, min_speed=0.1, max_time=_blocked_time, terminate_on_failure=True, name="AgentBlockedTest"))
+ 
+         if self.mode == 'eval':
+             # extra criteria for evaluating
+diff --git a/rift/scenario/tools/route_parser.py b/rift/scenario/tools/route_parser.py
+index d013bc2..0ed71d0 100644
+--- a/rift/scenario/tools/route_parser.py
++++ b/rift/scenario/tools/route_parser.py
+@@ -131,7 +131,7 @@ class RouteParser(object):
+                 scenario_config.name = scenario.attrib.get('name')
+                 scenario_config.type = scenario.attrib.get('type')
+ 
+-                for elem in scenario.getchildren():
++                for elem in scenario:
+                     if elem.tag == 'trigger_point':
+                         scenario_config.trigger_points.append(convert_elem_to_transform(elem))
+                     elif elem.tag == 'other_actor':

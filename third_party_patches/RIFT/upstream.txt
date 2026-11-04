@@ -1,0 +1,2 @@
+url: https://github.com/CurryChen77/RIFT.git
+commit: 49d643cf5d6471b6b8aeadf00107f004e7d2a310

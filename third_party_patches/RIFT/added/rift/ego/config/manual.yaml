@@ -1,0 +1,16 @@
+policy_name: 'manual'
+policy_type: 'rule-based'
+model_type: 'ego'
+results_folder_path: ''
+obs_type: 'ego_no_obs'
+ego_action_dim: 3
+
+# driving window
+window_width: 1280
+window_height: 720
+steer_rate: 1.8        # how fast steering winds on (per second); lower = calmer
+steer_return: 3.0      # how fast it self-centres when you let go
+
+save_freq: 10
+buffer_capacity: 10000
+buffer_start_training: 100

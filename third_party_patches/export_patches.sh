@@ -5,7 +5,7 @@
 # Run from anywhere:  bash third_party_patches/export_patches.sh
 set -u
 WS=$(cd "$(dirname "$0")/.." && pwd); OUT=$WS/third_party_patches
-SKIP='ckpt/|checkpoint|results/|outputs/|eval_[a-z0-9]+/|__pycache__|\.pyc$|\.pt$|\.pth$|\.ckpt$|\.safetensors$|\.mp4$|\.avi$|\.png$|\.jpg$|\.npy$|\.egg-info|CARLA_0915|Bench2DriveZoo|(^|/)test\.json$|\.log$'
+SKIP='ckpt/|checkpoint|results/|outputs/|eval_[a-z0-9]+/|__pycache__|\.pyc$|\.pt$|\.pth$|\.ckpt$|\.safetensors$|\.mp4$|\.avi$|\.png$|\.jpg$|\.npy$|\.egg-info|CARLA_0915|Bench2DriveZoo|(^|/)test\.json$|\.log$|^data/|^log/|model_ckpt/|\.pkl$|\.pt\.|wandb/'
 export_repo() {   # export_repo <name> <path>
     local name=$1 repo=$2 dst=$OUT/$1
     [ -d "$repo/.git" ] || { echo "skip $name: not a git repo"; return; }
@@ -28,4 +28,7 @@ export_repo SimLingo    "$WS/SimLingo"
 export_repo DriveMoE    "$WS/DriveMoE"
 export_repo BridgeDrive "$WS/BridgeDrive"
 export_repo WA-JEPA     "/home/all/WA-JEPA"
+export_repo RIFT        "$WS/RIFT"
+export_repo CRAFT       "$WS/CRAFT"
+export_repo CTG         "$WS/CTG"
 find "$OUT" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null; echo "written to $OUT"

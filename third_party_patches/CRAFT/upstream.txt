@@ -1,0 +1,2 @@
+url: https://github.com/CurryChen77/CraftPolicy.git
+commit: 2ff9ab6c80440fced61d85e0b0fde8cac33c20d0

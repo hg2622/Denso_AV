@@ -5,7 +5,7 @@
 # from each project's own release page (see SETUP.txt).
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd); WS=$(cd "$HERE/.." && pwd)
-names=("$@"); [ ${#names[@]} -eq 0 ] && names=(Bench2Drive LEAD CaRL SimLingo DriveMoE BridgeDrive WA-JEPA)
+names=("$@"); [ ${#names[@]} -eq 0 ] && names=(Bench2Drive LEAD CaRL SimLingo DriveMoE BridgeDrive WA-JEPA RIFT CRAFT CTG)
 for name in "${names[@]}"; do
     src=$HERE/$name; [ -f "$src/upstream.txt" ] || { echo "no patch set for $name"; continue; }
     url=$(sed -n 's/^url: //p' "$src/upstream.txt"); commit=$(sed -n 's/^commit: //p' "$src/upstream.txt")

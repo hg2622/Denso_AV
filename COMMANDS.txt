@@ -18,6 +18,9 @@ Think2Drive      bash t2d_drive.sh Town04 3   (NO carla_server.sh) | -  (own pip
 SimLingo (VLA)   bash sl_drive.sh --map Town10HD --green-lights    | bash run_simlingo_eval.sh 24211      score: show_sl_score.sh 24211
 Drive-pi0 (VLA)  bash pi0_drive.sh --map Town10HD --green-lights   | bash run_pi0_eval.sh 24211           score: show_pi0_score.sh 24211
 DriveMoE (VLA)   bash pi0_drive.sh --model drivemoe --map Town10HD | bash run_pi0_eval.sh 24211 drivemoe  score: show_pi0_score.sh 24211 drivemoe
+NPC POLICIES (learned traffic that drives the cars AROUND you; the ego can be you or any planner)        details §15 / §16
+RIFT (RL NPCs)   bash rift_drive.sh rift_pluto  (NO carla_server.sh) | bash rift_compare.sh pdm_lite   report: python rift_report.py
+CTG++ (diffusion) bash ctg_drive.sh trouble    (starts the server)   | ctg_carla/ctg_carla.py --test 120 --guidance trouble --record X.mp4
                                                                    |
 Traffic for any live drive (2nd terminal): bash traffic_chaos.sh 30 20 150    Stop everything: bash stop_all.sh
 Scenario knobs for any eval:  SET="HighwayCutIn.no_cut_in=1" EXTEND=250 bash run_<x>_eval.sh 2286      (knob list in §9)
@@ -423,6 +426,54 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
     bash ~/carla_ws/pdmlite_cutins.sh                          # the cut-in scenes (fast cut-in, lane invader + pedestrian, hand-driven scene1)
     reference: the authors' PDM-Lite on all 220 Bench2Drive routes = mean DS 97.0 (SimLingo/Bench2Drive/pdm_lite_b2d_traj/merged.json)
     the .text_changes.txt next to each video logs its target speed and "brake for vehicle / walker / red light / stop sign" decisions
+
+  §15 RIFT (CurryChen77/RIFT, ICLR'26 "RL fine-tuned Pluto drives the NPCs"; code ~/carla_ws/RIFT, env rift; CRAFT = ~/carla_ws/CRAFT, env craft)
+    What it is: a LEARNED NPC policy (Pluto, nuPlan imitation backbone, RL fine-tuned in CARLA on Bench2Drive) that takes over the
+    vehicles near the ego ("CBVs") and drives them; the ego is a separate agent. It is a trained model + its training code, not a
+    rule set: the NPC chooses from the map/agents it sees. Checkpoints (RIFT/rift/cbv/planning/model_ckpt/<name>/): pluto (imitation
+    only), rift_pluto (group-relative RL, most adversarial), grpo_pluto, ppo_pluto, reinforce_pluto, rs_pluto, rtr_pluto, sft_pluto.
+    CRAFT (CurryChen77/CraftPolicy) is the same codebase fine-tuning the EGO (SparseDriveV2 / HiP-AD / MindDrive) against those NPCs;
+    its fine-tuned ego checkpoints are not released and it needs CARLA 0.9.16 + mmcv, so only its NPC side runs here (craft_eval.sh).
+    YOU DRIVE, the policy drives the NPCs:   bash ~/carla_ws/rift_drive.sh [rift_pluto|pluto|grpo_pluto|...|standard]   (needs DISPLAY)
+      starts its own CARLA, window with chase/top/bonnet cams (TAB), W/S A/D Shift Q Space, ESC ends the route; scored like a model run.
+      RIFT_BLOCKED_TIME=120 (benchmark ends a route after 3 s standing still -> raised), RIFT_CBV_PROFILE=human (NPC selection gates
+      widened: search 80 m, 4 adversaries at once, interaction-distance slack 60 m; 'eval' = the paper's gates, under which a slow or
+      paused human never qualifies and no NPC engages), RIFT_CBV_REUSE=1 lets a retired NPC be picked again.
+    APPLES TO APPLES (same ego, same routes, same seed, only the NPC policy changes):
+      bash ~/carla_ws/rift_compare.sh [pdm_lite] [standard pluto rift_pluto grpo_pluto ppo_pluto reinforce_pluto]   (~25 min per policy)
+      python ~/carla_ws/rift_report.py [TAG ...]      -> per-route DS / RC, NPCs taken over, collisions they caused, control time, table
+      result (pdm_lite ego, 10 Bench2Drive routes, seed 0):  standard DS 91.6 (0 NPCs) | pluto 79.6 (18 NPCs, 5 coll) | rift_pluto 93.9
+      (19 NPCs, 8 coll) | grpo 91.6 (18, 1) | ppo 80.2 (16, 3) | reinforce 88.9 (16, 4).  rift_pluto NPCs collide the most (0.42/NPC);
+      the DS is the ego's score, so a high DS with many NPC collisions = the NPCs crash into each other/obstacles rather than the ego.
+    single eval: bash rift_eval.sh [CBV] [EGO]   (ego pdm_lite | plant | manual ...; results RIFT/log/eval/<ego>-<cbv>-rule-seed0/, videos inside)
+    local patches (third_party_patches/RIFT): manual keyboard ego, natten rpb layer reimplemented (new natten dropped it), torch.load
+      weights_only, route_parser/getchildren, video guard, RIFT_* env knobs, 'human' selection profile in rule.yaml, speed limits Town13/15.
+
+  §16 CTG++ (NVlabs/CTG, "Language-Guided Traffic Simulation via Scene-Level Diffusion"; code ~/carla_ws/CTG, env ctg, adapter ctg_carla/)
+    What it is: a scene-level diffusion model (nuScenes-trained, 3.1 s history -> 5.2 s joint future for every car in the scene) whose
+    sampling is steered by differentiable GUIDANCE LOSSES at every denoising step: collision avoidance, stay on the road, target speed,
+    "car k hits car j", keep distance, cut in, ... (the paper's GPT-4 step turns a sentence into such a loss; here you pick the loss).
+    The CARLA adapter: every 0.5 s the ego + the nearest moving NPCs (<= --control 8, within --radius 60 m) form the scene; the model
+    generates all their trajectories jointly; the NPCs track theirs with velocity commands (physics on, so contacts are real-mass collisions; re-handed to the Traffic Manager when
+    they leave the scene or stop); the ego's own prediction is discarded because you (or the autopilot) drive it. Traffic that falls
+    behind is recycled to lanes ahead of you. Map = OpenDRIVE lanes -> the model's 15x80 lane polyline input + 0.5 m/px drivable raster.
+    YOU DRIVE:   bash ~/carla_ws/ctg_drive.sh [trouble|cutin|tailgate|safe|none|my_guidance.json] [--town Town05 --stride 4 --samples 2 ...]
+      trouble = the nearest NPC ahead is pulled onto your future path (red dots), the rest avoid each other; cutin = it cuts in and brakes;
+      tailgate = it stays 3-8 m from you; safe = realistic traffic; none = unguided. Window keys as rift_drive.sh. Starts the server itself.
+      JSON = list of {name, weight, params, agents}; names from tbsim GUIDANCE_FUNC_MAP (target_speed, agent_collision, map_collision,
+      gptcollision, gptkeepdistance, ...) + ctg_model extras (front_collision, keep_distance, stay_away, follow_lane, change_to_left_lane
+      ...); indices: "ego" = 0, "npc1" = nearest NPC, "npc2" ... (sorted by distance at each plan).
+    HEADLESS TEST / VIDEO:  ~/miniconda3/envs/ctg/bin/python ctg_carla/ctg_carla.py --test 120 --guidance trouble --record out.mp4 [--snapshot P]
+      (ego on autopilot; prints NPCs under control, latency, ego collisions). selected_runs/ctg/ctg_{trouble,safe}_autopilot_town05.mp4
+    latency: 100 denoising steps x 5 samples = 1.7 s per plan (--stride 1 --samples 5); --stride 4 --samples 2 = 0.3 s (default in ctg_drive.sh
+      is what you pass; the test videos used stride 4). Guidance picks the best of the samples; perturbation lr 0.3, 1 Adam step per denoise.
+    pitfalls fixed in ctg_carla/ctg_model.py (the repo itself is unmodified): the policy zeroes the actions of "stationary" agents using the
+      GT future speed, which a simulator does not have -> the placeholder future carries the current speed and 'current_speed' mode is set on
+      BOTH the wrapper and the policy (with the wrapper's flag off the mask is None and x[None]=0 silently zeroes EVERY agent: straight
+      constant-speed output, guidance without effect); step_index is always 0 (fresh scene each plan, mask recomputed); load_vec_map stubbed
+      (nuScenes map loader) - the lane polylines come from CARLA; agent-centric batch built by hand (ctg_model.build_batch).
+    model: CTG/ckpt/ctg++8_9,10edge (CC-BY-NC-SA-4.0, iter 50000); deps CTG/trajdata (AIasd fork), CTG/Pplan (spline-planner), CTG/stlcg (dev);
+      python 3.9, torch 2.8+cu128, pytorch-lightning 1.9.5 (loads the 1.8 checkpoint), numpy 1.23, l5kit --no-deps; sys.path via ctg_src.pth.
 
   FAST CUT-IN scene (HighwayCutIn 2286, cut-in point 4 m instead of 10, cut-in car at 120% speed; route extended 250 m):
     SET="HighwayCutIn.cut_in_distance=4,HighwayCutIn.speed_perc=120" EXTEND=250
