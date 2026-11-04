@@ -133,11 +133,15 @@ def recycle_far_npcs(max_dist=90.0):
     lane slot 40-100 m ahead of the ego (facing the lane direction) so the scene never runs dry."""
     el = ego.get_location(); far = [v for v in npcs if v.is_alive and v.id not in controlled and v.get_location().distance(el) > max_dist]
     if not far: return
-    slots = lane_slots(cmap.get_waypoint(el), 30.0, 80.0); rng.shuffle(slots)
+    slots = lane_slots(cmap.get_waypoint(el), 30.0, 80.0); rng.shuffle(slots); used = []
     for v in far:
         for wp in slots:
-            if clear_of_vehicles(wp.transform.location):
-                tf = wp.transform; tf.location.z += 0.3; v.set_transform(tf); v.set_target_velocity(carla.Vector3D(0, 0, 0)); hist.pop(v.id, None); break
+            loc = wp.transform.location
+            # a car moved this tick still reports its OLD location until the next world.tick(), so the slots taken in this
+            # call must be tracked here: two cars put on one slot interpenetrate and PhysX fires them into the sky
+            if clear_of_vehicles(loc) and all(loc.distance(u) > 9.0 for u in used):
+                tf = wp.transform; tf.location.z += 0.3; v.set_transform(tf); v.set_target_velocity(carla.Vector3D(0, 0, 0))
+                v.set_target_angular_velocity(carla.Vector3D(0, 0, 0)); hist.pop(v.id, None); used.append(loc); break
 if a.ego == 'autopilot' or a.test: ego.set_autopilot(True, tm.get_port())
 for _ in range(5): world.tick()
 print(f'ego + {len(npcs)} NPCs spawned; ego mode {"autopilot" if (a.ego == "autopilot" or a.test) else "manual"}', flush=True)
@@ -251,6 +255,11 @@ def apply_plans():
         v, plan, k = c['actor'], c['plan'], c['k']
         if k + 1 >= len(plan) or not v.is_alive: continue
         tf = v.get_transform(); cx, cy, cyaw_deg = tf.location.x, tf.location.y, tf.rotation.yaw
+        # contact guard: two cars commanded into each other stay interpenetrated and PhysX launches them. Within a
+        # bumper's reach of any other vehicle the car coasts (keeps its momentum, real-mass contact) instead.
+        half = extent_of(v)[0] / 2
+        if any(o.id != v.id and o.is_alive and tf.location.distance(o.get_location()) < half + extent_of(o)[0] / 2 + 0.3 for o in [ego] + npcs):
+            c['k'] = k + 1; continue
         nx, ny, nyaw = (float(q) for q in plan[k + 1]); tx, ty, tyaw_deg = to_carla(nx, ny, nyaw)
         px, py, _ = (float(q) for q in plan[k]); plan_speed = math.hypot(nx - px, ny - py) / DT
         vx, vy = (tx - cx) / DT, (ty - cy) / DT; sp = math.hypot(vx, vy); vmax = max(plan_speed * 1.5, 1.0)
@@ -285,7 +294,7 @@ if a.record:
     fourcc = cv2.VideoWriter_fourcc(*'mp4v'); writer = cv2.VideoWriter(a.record, fourcc, 10.0, (Wn, Hn))
 
 # ------------------------------------------------------------------ loop
-steer = 0.0; ctl = carla.VehicleControl(); clock = pygame.time.Clock(); tick = 0; t_start = time.time(); ms_last = 100
+steer = 0.0; ctl = carla.VehicleControl(); clock = pygame.time.Clock(); tick = 0; t_start = time.time(); ms_last = 100; tumble_max = 0; tumble_ticks = 0
 try:
     while True:
         for ev in pygame.event.get():
@@ -304,8 +313,15 @@ try:
             ctl.steer = round(steer, 2); ego.apply_control(ctl)
         ms_last = clock.tick_busy_loop(10) if not a.test else 100
         world.tick(); tick += 1; record_states()
+        if tick % 10 == 0:
+            tumbled = sum(1 for v in npcs if v.is_alive and (abs(v.get_transform().rotation.roll) > 45 or abs(v.get_transform().rotation.pitch) > 45))
+            tumble_max = max(tumble_max, tumbled); tumble_ticks += tumbled > 0
+            if tumbled and tick % 100 == 0 and os.environ.get('CTG_DEBUG_TUMBLE'):
+                for v in npcs:
+                    r = v.get_transform().rotation; l = v.get_location()
+                    if abs(r.roll) > 45 or abs(r.pitch) > 45: print(f'  tumbled {v.type_id} id {v.id}: roll {r.roll:.0f} pitch {r.pitch:.0f} z {l.z:.1f} controlled {v.id in controlled}', flush=True)
         if tick >= HIST_T and (tick - HIST_T) % a.replan == 0: replan()
-        if tick % 20 == 0: recycle_far_npcs()
+        if tick % 20 == 0 and not os.environ.get("CTG_NO_RECYCLE"): recycle_far_npcs()
         apply_plans()
         screen.fill((15, 15, 15))
         if 'cam' in img: screen.blit(img['cam'], (0, 0))
@@ -325,7 +341,7 @@ except Exception:
     import traceback; traceback.print_exc()
 finally:
     print(f'\n=== {tick * DT:.0f} s simulated in {time.time() - t_start:.0f} s wall; {n_plans} plans, mean latency {np.mean(plan_lat) if plan_lat else 0:.2f}s; '
-          f'ego collisions: {len(collisions)} {[c[1] for c in collisions][:6]}', flush=True)
+          f'ego collisions: {len(collisions)} {[c[1] for c in collisions][:6]}; NPCs tumbled (roll/pitch > 45 deg): max {tumble_max} at once, {tumble_ticks} s with any', flush=True)
     if writer is not None: writer.release(); print('video:', a.record)
     for c in cams:
         try: c.stop(); c.destroy()
