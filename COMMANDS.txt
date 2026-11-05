@@ -19,7 +19,8 @@ SimLingo (VLA)   bash sl_drive.sh --map Town10HD --green-lights    | bash run_si
 Drive-pi0 (VLA)  bash pi0_drive.sh --map Town10HD --green-lights   | bash run_pi0_eval.sh 24211           score: show_pi0_score.sh 24211
 DriveMoE (VLA)   bash pi0_drive.sh --model drivemoe --map Town10HD | bash run_pi0_eval.sh 24211 drivemoe  score: show_pi0_score.sh 24211 drivemoe
 NPC POLICIES (learned traffic that drives the cars AROUND you; the ego can be you or any planner)        details §15 / §16
-RIFT (RL NPCs)   bash rift_drive.sh rift_pluto  (NO carla_server.sh) | bash rift_compare.sh pdm_lite   report: python rift_report.py
+RIFT (RL NPCs)   bash rift_freeroam.sh rift_pluto (free roam; starts server) | bash rift_compare.sh pdm_lite   report: python rift_report.py
+                 bash rift_drive.sh rift_pluto  (scored B2D route, own CARLA) |
 CTG++ (diffusion) bash ctg_drive.sh trouble    (starts the server)   | ctg_carla/ctg_carla.py --test 120 --guidance trouble --record X.mp4
                                                                    |
 Traffic for any live drive (2nd terminal): bash traffic_chaos.sh 30 20 150    Stop everything: bash stop_all.sh
@@ -445,6 +446,14 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       result (pdm_lite ego, 10 Bench2Drive routes, seed 0):  standard DS 91.6 (0 NPCs) | pluto 79.6 (18 NPCs, 5 coll) | rift_pluto 93.9
       (19 NPCs, 8 coll) | grpo 91.6 (18, 1) | ppo 80.2 (16, 3) | reinforce 88.9 (16, 4).  rift_pluto NPCs collide the most (0.42/NPC);
       the DS is the ego's score, so a high DS with many NPC collisions = the NPCs crash into each other/obstacles rather than the ego.
+    FREE ROAM (continuous world, no episode, no scoring):   bash ~/carla_ws/rift_freeroam.sh [rift_pluto|grpo_pluto|...|pluto|standard]
+      [--town Town05 --npcs 40 --ego autopilot --profile eval --record out.mp4 --show-routes --test SECONDS]   (RIFT/scripts/freeroam.py)
+      Same selector / route planner / observation / policy as the benchmark, but the ego's route is generated from wherever you are
+      (random turn at every junction, extended as consumed, regenerated when you leave it), traffic is spawned around you and cars
+      that fall behind are moved to lanes ahead, and an NPC that reaches its interaction point / collides / gets stuck is handed
+      back to the Traffic Manager (15 s cool-down, then eligible again). Red marker above a car = driven by the policy.
+      Self-test (ego on autopilot, Town05, 90 s): 30 takeovers, 4 NPCs under the policy nearly all the time, 20 NPC collisions,
+      ego hit once; policy 140 ms per step at 10 Hz (~1.5x real time). Video: selected_runs/rift/rift_freeroam_rift_pluto_autopilot_town05.mp4
     single eval: bash rift_eval.sh [CBV] [EGO]   (ego pdm_lite | plant | manual ...; results RIFT/log/eval/<ego>-<cbv>-rule-seed0/, videos inside)
     local patches (third_party_patches/RIFT): manual keyboard ego, natten rpb layer reimplemented (new natten dropped it), torch.load
       weights_only, route_parser/getchildren, video guard, RIFT_* env knobs, 'human' selection profile in rule.yaml, speed limits Town13/15.
