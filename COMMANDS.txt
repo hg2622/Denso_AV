@@ -484,8 +484,11 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       blue = the others). CTG_CAM=1 starts on the top-down camera (0 chase, 2 bonnet), which is the clearest view of the plans.
     HEADLESS TEST / VIDEO:  ~/miniconda3/envs/ctg/bin/python ctg_carla/ctg_carla.py --test 120 --guidance trouble --record out.mp4 [--snapshot P]
       (ego on autopilot; prints NPCs under control, latency, ego collisions). selected_runs/ctg/ctg_{trouble,safe}_autopilot_town05.mp4
-    latency: 100 denoising steps x 5 samples = 1.7 s per plan (--stride 1 --samples 5); --stride 4 --samples 2 = 0.3 s (default in ctg_drive.sh
-      is what you pass; the test videos used stride 4). Guidance picks the best of the samples; perturbation lr 0.3, 1 Adam step per denoise.
+    latency / why it stutters: the model replans every 0.5 s of SIM time and the loop is single-threaded, so each plan freezes the
+      window for exactly its own duration. ctg_drive.sh defaults to the FAST sampler (--stride 4 --samples 2 = 0.36 s per plan, i.e.
+      faster than real time). The paper's full sampler (--stride 1 --samples 5, 100 denoising steps) costs ~1.6 s per plan: a 1.5 s
+      freeze every half second, which also piles traffic up behind the stalled ego (measured: 366 ego collisions in 40 s vs 1 on the
+      fast sampler). --replan 10 halves how often it plans. Guidance picks the best of the samples; perturbation lr 0.3, 1 Adam step.
     pitfalls fixed in ctg_carla/ctg_model.py (the repo itself is unmodified): the policy zeroes the actions of "stationary" agents using the
       GT future speed, which a simulator does not have -> the placeholder future carries the current speed and 'current_speed' mode is set on
       BOTH the wrapper and the policy (with the wrapper's flag off the mask is None and x[None]=0 silently zeroes EVERY agent: straight
