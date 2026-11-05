@@ -451,7 +451,15 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       Same selector / route planner / observation / policy as the benchmark, but the ego's route is generated from wherever you are
       (random turn at every junction, extended as consumed, regenerated when you leave it), traffic is spawned around you and cars
       that fall behind are moved to lanes ahead, and an NPC that reaches its interaction point / collides / gets stuck is handed
-      back to the Traffic Manager (15 s cool-down, then eligible again). Red marker above a car = driven by the policy.
+      back to the Traffic Manager (15 s cool-down, then eligible again).
+      SEEING WHAT THE LEARNED WEIGHTS DECIDED: a red dot floats above every car the policy is driving, and a red trail shows
+      the trajectory it picked this step (bright = next ~4 s, dim = the rest of the 8 s plan, orange dot = where it expects
+      to be in 4 s). --show-candidates also draws, faintly, the other trajectories it chose between; --no-show-plans turns
+      the trails off; --show-routes draws each NPC's global route to its interaction point.
+      NOTE on colours: CARLA's debug primitives are EMISSIVE, so a bright or fat point washes the frame white (same trap as
+      the geo-scene lane paint). The values in draw_traj() are a bloom budget, not a colour: keep them dark (60,3,3 reads as
+      red) and prefer thin lines over fat points. life_time must also outlive one rendered frame, since the sim runs slower
+      than real time at 10 Hz.
       Self-test (ego on autopilot, Town05, 90 s): 30 takeovers, 4 NPCs under the policy nearly all the time, 20 NPC collisions,
       ego hit once; policy 140 ms per step at 10 Hz (~1.5x real time). Video: selected_runs/rift/rift_freeroam_rift_pluto_autopilot_town05.mp4
     single eval: bash rift_eval.sh [CBV] [EGO]   (ego pdm_lite | plant | manual ...; results RIFT/log/eval/<ego>-<cbv>-rule-seed0/, videos inside)
@@ -472,6 +480,8 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       JSON = list of {name, weight, params, agents}; names from tbsim GUIDANCE_FUNC_MAP (target_speed, agent_collision, map_collision,
       gptcollision, gptkeepdistance, ...) + ctg_model extras (front_collision, keep_distance, stay_away, follow_lane, change_to_left_lane
       ...); indices: "ego" = 0, "npc1" = nearest NPC, "npc2" ... (sorted by distance at each plan).
+    The same plan drawing: every CTG++-controlled NPC shows a trail of its generated trajectory (red = the NPC guided at you,
+      blue = the others). CTG_CAM=1 starts on the top-down camera (0 chase, 2 bonnet), which is the clearest view of the plans.
     HEADLESS TEST / VIDEO:  ~/miniconda3/envs/ctg/bin/python ctg_carla/ctg_carla.py --test 120 --guidance trouble --record out.mp4 [--snapshot P]
       (ego on autopilot; prints NPCs under control, latency, ego collisions). selected_runs/ctg/ctg_{trouble,safe}_autopilot_town05.mp4
     latency: 100 denoising steps x 5 samples = 1.7 s per plan (--stride 1 --samples 5); --stride 4 --samples 2 = 0.3 s (default in ctg_drive.sh

@@ -267,18 +267,25 @@ def apply_plans():
         dyaw = (tyaw_deg - cyaw_deg + 180.0) % 360.0 - 180.0; wz = max(-120.0, min(120.0, dyaw / DT))
         v.set_target_velocity(carla.Vector3D(vx, vy, v.get_velocity().z)); v.set_target_angular_velocity(carla.Vector3D(0.0, 0.0, wz))
         c['k'] = k + 1
-        if v.id == (last_scene[trouble_idx - 1].id if (trouble_idx and trouble_idx - 1 < len(last_scene)) else -1): col = carla.Color(255, 40, 40)
-        else: col = carla.Color(40, 120, 255)
-        z = tf.location.z
-        for j in range(k, min(len(plan), k + 20), 2):
-            qx0, qy0, _ = (float(q) for q in plan[j]); qx, qy, _ = to_carla(qx0, qy0, 0)
-            world.debug.draw_point(carla.Location(x=qx, y=qy, z=z + 0.3), size=0.08, color=col, life_time=DT * 1.5)
+        if v.id == (last_scene[trouble_idx - 1].id if (trouble_idx and trouble_idx - 1 < len(last_scene)) else -1): col = carla.Color(80, 4, 4)
+        else: col = carla.Color(6, 20, 60)
+        # CARLA debug primitives are EMISSIVE: these values are a bloom budget, not a colour. Thin lines hold their hue;
+        # a bright/fat point washes the whole frame white. life_time must outlive one rendered frame (sim < real time).
+        pts = []
+        for j in range(k, min(len(plan), k + 34), 3):
+            px, py, _ = (float(q) for q in plan[j]); qx, qy, _ = to_carla(px, py, 0)
+            wp2 = cmap.get_waypoint(carla.Location(x=qx, y=qy, z=0.5), project_to_road=True)
+            pts.append(carla.Location(x=qx, y=qy, z=(wp2.transform.location.z if wp2 else z) + 0.32))
+        for j in range(len(pts) - 1):
+            world.debug.draw_line(pts[j], pts[j + 1], thickness=0.04, color=col, life_time=0.5)
+            if j % 3 == 0: world.debug.draw_point(pts[j], size=0.05, color=col, life_time=0.5)
+        world.debug.draw_point(v.get_location() + carla.Location(z=2.9), size=0.09, color=col, life_time=0.5)
 
 # ------------------------------------------------------------------ window
 Wn, Hn = 1280, 720; img = {}
 pygame.init(); screen = pygame.display.set_mode((Wn, Hn)); pygame.display.set_caption('CTG++ drives the NPCs'); font = pygame.font.SysFont('monospace', 17, bold=True)
 cams = []; CAMS = [('chase', carla.Location(x=-7, z=3.2), carla.Rotation(pitch=-12)), ('top', carla.Location(z=45), carla.Rotation(pitch=-90)), ('bonnet', carla.Location(x=0.8, z=1.3), carla.Rotation())]
-cam_idx = 0
+cam_idx = int(os.environ.get('CTG_CAM', 0))
 def attach_cam():
     global cams
     for c in cams:

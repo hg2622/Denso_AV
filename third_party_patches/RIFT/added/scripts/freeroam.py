@@ -42,7 +42,10 @@ ap.add_argument('--profile', default='human', help='CBV selection gates: human (
 ap.add_argument('--test', type=float, default=0.0, help='headless: ego on autopilot for N seconds, then print stats')
 ap.add_argument('--record', default='', help='write the window to this mp4')
 ap.add_argument('--snapshot', default='', help='save window frames to this prefix every 5 s')
-ap.add_argument('--show-routes', action='store_true', help='draw the CBV routes in the world')
+ap.add_argument('--show-routes', action='store_true', help="draw the NPCs' global routes (to their interaction point) in the world")
+ap.add_argument('--show-plans', action='store_true', default=True, help="draw each controlled NPC's planned trajectory (default on; --no-show-plans to disable)")
+ap.add_argument('--no-show-plans', action='store_false', dest='show_plans')
+ap.add_argument('--show-candidates', action='store_true', help='also draw the other trajectories the policy chose between (faint)')
 a = ap.parse_args()
 if a.test: os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
 os.environ.setdefault('RIFT_CBV_PROFILE', a.profile)
@@ -98,13 +101,15 @@ common = dict(ROOT_DIR=ROOT, mode='eval', num_scenario=1, seed=a.seed, pretrain_
 logger = Logger(os.path.join(ROOT, 'log', 'freeroam', f'{a.cbv}-{a.town}'))
 env_params = dict(mode='eval', num_scenario=1, search_radius=SEARCH_RADIUS, ego_policy_type='rule-based', cbv_policy_type='il',
                   ego_obs_type='ego_no_obs', cbv_obs_type='cbv_no_obs', collect_ego_obs_type='ego_no_obs', ROOT_DIR=ROOT,
-                  need_video_render=False, signalized_junction=False, warm_up_steps=4, img_size=[1280, 720],
+                  need_video_render=bool(a.show_plans or a.show_candidates), signalized_junction=False, warm_up_steps=4, img_size=[1280, 720],
                   acc_range=[-3.0, 3.0], steer_range=[-0.3, 0.3], out_lane_thres=4, desired_speed=8, frame_rate=a.fps)
 recog_config = load_yaml('rift/cbv/recognition/config/rule.yaml'); recog_config.update(common); recog_config['desired_speed'] = 8
 recog = CBV_RECOGNITION_LIST['rule'](recog_config, logger=logger); recog.set_mode('eval'); recog.set_world()
 if USE_POLICY:
     cbv_config = load_yaml(f'rift/cbv/planning/config/{a.cbv}.yaml'); cbv_config.update(common)
-    cbv_config.update(ego_policy='manual', ego_obs_type='ego_no_obs', need_video_render=False, desired_speed=8)
+    # need_video_render=True makes the policy publish, per CBV, the trajectory it picked this step (and the candidates
+    # it chose between), which is what --show-plans draws in the world.
+    cbv_config.update(ego_policy='manual', ego_obs_type='ego_no_obs', need_video_render=bool(a.show_plans or a.show_candidates), desired_speed=8)
     env_params['cbv_policy_type'] = cbv_config['policy_type']; env_params['cbv_obs_type'] = cbv_config['obs_type']
     cbv_policy = CBV_POLICY_LIST[a.cbv](cbv_config, logger=logger)
     cbv_policy.set_mode('eval'); cbv_policy.load_model(resume=True)
@@ -275,6 +280,42 @@ def manage_cbvs(local, rest):
     CarlaDataProvider.set_ego_nearby_agents(ego, get_nearby_agents(ego, SEARCH_RADIUS))
     for cbv in CBVs.values(): CarlaDataProvider.set_CBV_nearby_agents(ego, cbv, get_nearby_agents(cbv, SEARCH_RADIUS))
 
+
+# ------------------------------------------------------------------ drawing the policy's plan
+DRAW_LIFE = 0.5   # seconds: must outlive one rendered frame (the sim runs slower than real time)
+# CARLA's debug primitives are EMISSIVE: a solid point washes out to white whatever colour is asked for (same issue as
+# the geo-scene lane paint). Thin lines keep their hue far better than fat points, so the plan is drawn as a polyline
+# and only its waypoints get small dots; the trail also tapers so "now" vs "in 8 s" is readable.
+def draw_traj(traj, color, z=0.35, step=2, size=0.09, line=True):
+    """traj: (T, >=2) in the right-handed frame the Pluto policy works in (y is negated vs CARLA)."""
+    pts = []
+    for i in range(0, len(traj), step):
+        x, y = float(traj[i][0]), float(traj[i][1])
+        wp = cmap.get_waypoint(carla.Location(x=x, y=-y, z=0.0), project_to_road=True)
+        pts.append(carla.Location(x=x, y=-y, z=(wp.transform.location.z if wp else 0.0) + z))
+    for i in range(len(pts) - 1):
+        if line: world.debug.draw_line(pts[i], pts[i + 1], thickness=0.04, color=color, life_time=DRAW_LIFE)
+        if i % 4 == 0: world.debug.draw_point(pts[i], size=size, color=color, life_time=DRAW_LIFE)
+    return pts
+
+def plans_by_cbv():
+    """{cbv_id: (chosen trajectory, other candidates)} from the policy's render data for the step just computed.
+    The policy appends one entry per CBV in the same order as its CBV_states dict, so they zip together."""
+    if not (a.show_plans or a.show_candidates) or not USE_POLICY: return {}
+    try: rd = cbv_policy.get_render_data(0)
+    except Exception: return {}
+    out = {}
+    ids = list(rd.get('CBV_states', {}).keys())
+    chosen = rd.get('planning_trajectory_list', []); cands = rd.get('candidate_trajectories_list', [])
+    best = rd.get('candidate_index_list', [])
+    for i, cid in enumerate(ids):
+        p = chosen[i] if a.show_plans and i < len(chosen) else None
+        c = None
+        if a.show_candidates and i < len(cands):
+            c = [t for j, t in enumerate(cands[i]) if not (i < len(best) and j == best[i])]
+        out[cid] = (p, c)
+    return out
+
 # ------------------------------------------------------------------ ego collision sensor + window
 collisions = []
 def _on_collision(e):
@@ -341,20 +382,36 @@ try:
         cbv_actions = {}
         if USE_POLICY and CBVs:
             t0 = time.time(); obs = CBVObs.get_obs(ego)
-            if obs: cbv_actions = cbv_policy.get_action([obs], [{'env_id': 0}])['CBVs_actions'][0]
+            if obs:
+                if a.show_plans or a.show_candidates: cbv_policy.reset_render_data()   # the lists accumulate otherwise
+                cbv_actions = cbv_policy.get_action([obs], [{'env_id': 0}])['CBVs_actions'][0]
             infer_lat.append(time.time() - t0)
         control_ticks += len(CBVs)
         el = ego.get_location()
-        for cbv in CBVs.values():
+        plans = plans_by_cbv()
+        for cid, cbv in CBVs.items():
             loc = cbv.get_location(); min_gap = min(min_gap, loc.distance(el))
-            world.debug.draw_point(loc + carla.Location(z=2.6), size=0.18, color=carla.Color(255, 40, 40), life_time=DT * 1.5)
+            # marker above the car: this one is driven by the learned policy right now
+            world.debug.draw_point(loc + carla.Location(z=2.9), size=0.09, color=carla.Color(80, 4, 4), life_time=DRAW_LIFE)
+            plan, cands = plans.get(cid, (None, None))
+            if cands is not None:
+                for traj in cands[:8]:
+                    draw_traj(traj, carla.Color(8, 8, 30), z=0.22, step=10, size=0.03)
+            if plan is not None:
+                # near half of the plan (next ~4 s) bright, far half dimmer
+                half = len(plan) // 2
+                draw_traj(plan[:half + 1], carla.Color(60, 3, 3), z=0.32, step=3, size=0.05)
+                draw_traj(plan[half:], carla.Color(22, 2, 2), z=0.32, step=6, size=0.04)
+                # where the policy expects to be in 4 s
+                draw_traj(plan[half:half + 1], carla.Color(70, 40, 0), z=0.9, step=1, size=0.09, line=False)
         if a.show_routes and CBVs: route_planner.vis_route()
         # window
         screen.fill((15, 15, 15))
         if 'cam' in img: screen.blit(img['cam'], (0, 0))
         lat = np.mean(infer_lat[-20:]) * 1000 if infer_lat else 0.0
         hud = [f'{kmh:5.1f} km/h  NPCs under {a.cbv}: {len(CBVs)}/{recog.max_agent_num}  takeovers {takeovers}  policy {lat:.0f} ms  ego collisions {len(collisions)}  route left {len(ego_rp._waypoints_queue)} m',
-               'W/S A/D  Shift gentle  Q reverse  Space handbrake  TAB camera  ESC quit   (red marker = NPC driven by the policy)']
+               'W/S A/D  Shift gentle  Q reverse  Space handbrake  TAB camera  ESC quit   '
+               + ('(red dot over a car = driven by the policy, red trail = the path it plans to take)' if a.show_plans else '(red dot over a car = driven by the policy)')]
         for i, line in enumerate(hud):
             lab = font.render(line, True, (255, 230, 90)); bg = pygame.Surface((lab.get_width() + 8, lab.get_height() + 2)); bg.set_alpha(150); bg.fill((0, 0, 0)); screen.blit(bg, (6, 6 + 22 * i)); screen.blit(lab, (10, 8 + 22 * i))
         pygame.display.flip()
