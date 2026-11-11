@@ -489,6 +489,28 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       faster than real time). The paper's full sampler (--stride 1 --samples 5, 100 denoising steps) costs ~1.6 s per plan: a 1.5 s
       freeze every half second, which also piles traffic up behind the stalled ego (measured: 366 ego collisions in 40 s vs 1 on the
       fast sampler). --replan 10 halves how often it plans. Guidance picks the best of the samples; perturbation lr 0.3, 1 Adam step.
+    FIDELITY TO THE PAPER'S CODE (checked against CTG/scripts/scene_editor.py + tbsim/utils/env_utils.py):
+      SAME: the checkpoint and its config are loaded exactly as their SceneDiffuser composer does; use_ema=True,
+        disable_control_on_stationary='current_speed', moving_speed_th=0.5 are the checkpoint's own resolved defaults (the
+        saved config.json omits the key, so the algo_config class default applies - not our choice); replan every 5 model
+        steps = their n_step_action=5; guidance losses are their registered GUIDANCE_FUNC_MAP entries, applied through
+        set_guidance / set_guidance_optimization_params / set_diffusion_specific_params with their eval values (Adam lr 0.3,
+        1 grad step, apply_guidance_intermediate=True, apply_guidance_output=False); agent-centric batch, history 31 frames,
+        horizon 52, Unicycle dynamics, SceneTransformer - all from the checkpoint.
+      DIFFERENT (and why): (1) EXECUTION. Their env (trajdata) has NO physics: env_trajdata._step teleports every agent to
+        the predicted pose each frame. In CARLA that made contacts an unbounded impulse and flipped cars, so controlled NPCs
+        TRACK the trajectory with velocity commands under real physics. A tracked car can therefore deviate from the plan
+        (tyre friction, collisions), where theirs never does. This is the one substantive difference in the loop.
+        (2) INPUTS come from CARLA, not nuScenes: lane points from OpenDRIVE lane centres and the drivable raster from
+        lane-width circles, built to their vec_map parameters (S_seg 15, S_point 80, map_max_dist 80, ahead_threshold -40,
+        dist/heading weights 1.0/0.1). Our lane tensor has 3 columns (x,y,heading) vs their 4 (x,y,z,heading); the trained
+        map encoder has map_attr=2 and slices [:2], so only x,y plus the NaN-availability flag are ever read - the extra
+        column is inert in both. (3) SCENE SCOPE: their rollout drives every agent in a fixed nuScenes scene; here the model
+        drives the ego plus the nearest moving NPCs (--control, default 8) while the rest stay on the Traffic Manager, and
+        the ego's own prediction is discarded because a human (or the autopilot) drives it.
+      So: same model, same weights, same sampler and guidance; a CARLA world instead of a nuScenes log, and physical
+      trajectory tracking instead of teleporting. The videos show THIS adapter, not a reproduction of their paper figures
+      (those are nuScenes rollouts rendered top-down by their own rasterizer).
     pitfalls fixed in ctg_carla/ctg_model.py (the repo itself is unmodified): the policy zeroes the actions of "stationary" agents using the
       GT future speed, which a simulator does not have -> the placeholder future carries the current speed and 'current_speed' mode is set on
       BOTH the wrapper and the policy (with the wrapper's flag off the mask is None and x[None]=0 silently zeroes EVERY agent: straight
