@@ -1,0 +1,128 @@
+\documentclass[10pt]{article}
+\usepackage[letterpaper,margin=0.85in]{geometry}
+\usepackage[T1]{fontenc}\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{graphicx,booktabs,tabularx,caption,subcaption,float,xcolor,enumitem,titlesec,multicol}
+\usepackage[hidelinks]{hyperref}
+\graphicspath{{figs/}}
+\captionsetup{font=small,labelfont=bf,skip=4pt}
+\titlespacing*{\section}{0pt}{9pt}{4pt}\titlespacing*{\subsection}{0pt}{7pt}{3pt}
+\setlist{nosep,leftmargin=1.4em}
+\renewcommand{\arraystretch}{1.12}
+\newcommand{\unit}[1]{[\,#1\,]}
+
+\title{\vspace{-16pt}\large 12-830 Principles of Digital Twins, Fall 2026 \\[2pt]
+\Large Deliverable 2, Part 2.1: Physical System Characterization \\[2pt]
+\normalsize\mdseries CARLA digital twin of a real urban street site for automated-driving and traffic-interaction testing}
+\author{\normalsize Team: \underline{\hspace{3.2cm}} \quad (Part 2.1 by: \underline{\hspace{2.4cm}}; Parts 2.2 and 2.3 by: \underline{\hspace{2.4cm}})}
+\date{\vspace{-6pt}\normalsize November 2026}
+
+\begin{document}\maketitle\vspace{-16pt}
+
+\noindent\textbf{What the twin represents.} The physical system is a real urban street site (a 240 to 560\,m square of Pittsburgh, e.g.\ the East Liberty Target block) together with everything that moves on it: a subject vehicle (the \emph{ego}, which carries the sensor rig), the surrounding vehicles and pedestrians, and the traffic signals. The digital twin is a CARLA~0.9.15 reconstruction of that site, built automatically from OpenStreetMap vectors and satellite imagery, in which the same traffic processes run under a physics engine and are observed by the same kinds of sensors a real test vehicle carries. The twin therefore has two faces that Parts 2.2 and 2.3 must keep apart: the \emph{measured} channels (cameras, LiDAR, radar, GNSS, IMU on the ego) and the \emph{ground-truth state} (every agent's pose, velocity and the lane graph), which in the real system is unobservable and in the twin is exact. This document characterizes the physical foundation; Section~\ref{sec:handover} indexes every data stream and figure for the next parts.
+
+\section{System layout and spatial relationships}
+Figure~\ref{fig:hier} gives the spatial hierarchy. A site is a square in UTM metres with its centre as origin ($x$ east, $y$ south, CARLA's left-handed frame), and every lower level inherits that frame. Figure~\ref{fig:site} shows one site at each stage: the satellite image, the OSM vectors (roads, footprints, lots), the generated OpenDRIVE lane graph and the resulting CARLA scene seen from above; measured registration error between the three is under 5\,m. Figure~\ref{fig:towns} catalogues the synthetic CARLA towns also available as test sites, with their extents, and Figure~\ref{fig:rig} the geometry of the ego's sensor rig, which is the innermost coordinate frame of the twin.
+
+\begin{figure}[H]\centering\includegraphics[width=\linewidth]{hierarchy.png}
+\caption{Spatial hierarchy of the twin. Every level has its own coordinate frame; all are tied to the site origin.}\label{fig:hier}\end{figure}
+
+\begin{figure}[H]\centering
+\begin{subfigure}{0.49\linewidth}\centering\includegraphics[width=\linewidth,height=5.6cm,keepaspectratio]{09_aerial_vs_satellite.png}\caption{Satellite image (left) and the CARLA reconstruction seen from the same altitude (right).}\end{subfigure}\hfill
+\begin{subfigure}{0.49\linewidth}\centering\includegraphics[width=\linewidth,height=5.6cm,keepaspectratio]{06_opendrive_lanes.png}\caption{The OpenDRIVE lane graph generated from OSM: lanes 3.5\,m wide, junctions, service roads and parking strips.}\end{subfigure}\\[3pt]
+\begin{subfigure}{0.49\linewidth}\centering\includegraphics[width=\linewidth,height=5.6cm,keepaspectratio]{03_osm_vectors.png}\caption{OSM vectors used for the geometry: road centre lines, building footprints with height tags, parking lots, footways.}\end{subfigure}\hfill
+\begin{subfigure}{0.49\linewidth}\centering\includegraphics[width=\linewidth,height=5.6cm,keepaspectratio]{13_driving_window.png}\caption{The populated scene while driving: traffic, parked cars, pedestrians, with the satellite minimap for registration.}\end{subfigure}
+\caption{Layout of one real site (East Liberty, Pittsburgh, 340\,m square) at each stage of the twin.}\label{fig:site}\end{figure}
+
+\begin{figure}[H]\centering\includegraphics[width=\linewidth]{towns.png}
+\caption{Synthetic sites: CARLA towns rendered from above with their extents. Town03 and Town05 are urban grids with signalised junctions, Town04 a highway loop with a small town, Town10HD a dense downtown block.}\label{fig:towns}\end{figure}
+
+\begin{figure}[H]\centering\includegraphics[width=\linewidth]{rig.png}
+\caption{Ego sensor rig on a Lincoln MKZ (4.9\,m\,$\times$\,1.9\,m\,$\times$\,1.5\,m): positions in the vehicle frame, horizontal fields of view (top) and mounting heights with vertical fields of view (side).}\label{fig:rig}\end{figure}
+
+\section{Physical processes that define the behaviour}
+\begin{enumerate}[label=\textbf{P\arabic*}]
+\item \textbf{Vehicle dynamics.} Each vehicle is a rigid body on a four-wheel model (engine torque curve, gear ratios, tyre friction, suspension) integrated by the PhysX engine at the simulation tick. Inputs are throttle, steer and brake in $[0,1]$ / $[-1,1]$; outputs are pose, linear and angular velocity, and acceleration. Contacts are resolved as real-mass collisions, so impacts transfer momentum exactly as they would physically.
+\item \textbf{Traffic flow and interaction.} Background vehicles follow car-following, gap-acceptance and lane-change rules under the Traffic Manager (speed limits, following distance, signal compliance). On top of that, learned policies drive selected vehicles near the ego to create interactions: a reinforcement-learning fine-tuned planner (RIFT) that cuts in, blocks and brakes against the ego, and a scene-level diffusion model (CTG++) steered by differentiable losses such as ``vehicle $k$ collides with the ego''. Figure~\ref{fig:learned} shows both with their planned paths.
+\item \textbf{Pedestrian occupancy.} Pedestrians walk the footway graph between random destinations at 1 to 2\,m/s, cross at crosswalks, yield to slow cars and are knocked down by fast ones.
+\item \textbf{Signal control.} Traffic lights at junctions cycle through fixed phases (10 to 60\,s); their state is part of the ground-truth stream and is visible to the cameras.
+\item \textbf{Environment and illumination.} Sun position, cloud cover, precipitation, road wetness and fog are continuous parameters; they change what every camera, LiDAR and radar returns (Figure~\ref{fig:weather}) while the ground truth is unchanged, which is what makes the twin useful for quantifying sensing uncertainty in Part~2.2.
+\item \textbf{Sensing physics.} Cameras are pin-hole projections of the rendered scene with exact depth, semantic and instance labels; LiDAR is ray-cast with a configurable drop-off and noise model; radar returns range, azimuth, elevation and radial (Doppler) velocity per detection; GNSS and IMU are the vehicle state passed through optional Gaussian noise and bias models. Figure~\ref{fig:sensors} shows all of them at one instant, Figure~\ref{fig:bev} the ground-truth state at the same tick.
+\end{enumerate}
+
+\begin{figure}[H]\centering\includegraphics[width=\linewidth]{sensors.png}
+\caption{Every sensing modality of the twin captured from the same ego at the same tick (Town10HD, 46 vehicles, 28 pedestrians). Top: RGB, depth, semantic and instance segmentation from the front camera position. Bottom: LiDAR sweep (top view, colour = height), radar detections (colour = radial velocity), bird's-eye camera 55\,m above the ego, and the GNSS/IMU/vehicle-state readout.}\label{fig:sensors}\end{figure}
+
+\begin{figure}[H]\centering\includegraphics[width=0.95\linewidth]{bev.png}
+\caption{Left: the rendered bird's-eye camera. Right: the ground-truth state the twin holds at the same tick, drawn from the lane graph and the actor list. This right-hand panel is what the real system can never observe directly and what the measured channels in Part~2.2 must estimate.}\label{fig:bev}\end{figure}
+
+\begin{figure}[H]\centering\includegraphics[width=\linewidth]{weather.png}
+\caption{The same view under four environment states (clear noon, cloudy sunset, hard rain, night). Ground truth is identical in all four; only the measurements change.}\label{fig:weather}\end{figure}
+
+\begin{figure}[H]\centering
+\begin{subfigure}{0.49\linewidth}\includegraphics[width=\linewidth]{rift_plans_frame.png}\caption{RIFT: red dots mark vehicles driven by the learned policy, red trails their planned 8\,s trajectory.}\end{subfigure}\hfill
+\begin{subfigure}{0.49\linewidth}\includegraphics[width=\linewidth]{ctg_frame.png}\caption{CTG++: trails are the diffusion model's generated 5.2\,s trajectories for the controlled vehicles.}\end{subfigure}
+\caption{Learned traffic processes (P2) in the twin, with the controllers' intentions made visible.}\label{fig:learned}\end{figure}
+
+\section{Key performance variables}
+Table~\ref{tab:kpv} lists the variables that quantify the processes above. They split into traffic-state variables (how the site is flowing), interaction and safety variables (how close the agents come to each other) and ego-performance variables (how well the subject vehicle drives). Each is computable from the ground-truth stream in the twin and from the measured channels, so Part~2.3 can give every row a sensor, a unit and a rate.
+
+\begin{table}[H]\small\centering
+\begin{tabularx}{\linewidth}{@{}l X l l@{}}\toprule
+\textbf{Variable} & \textbf{Meaning} & \textbf{Unit} & \textbf{Typical range in the twin}\\\midrule
+Traffic flow & vehicles passing a cross-section per hour & veh/h & 300 to 1500 per lane\\
+Density & vehicles per unit lane length & veh/km & 5 to 60\\
+Space-mean speed & mean speed of vehicles in a segment & m/s & 2 to 14 (city), up to 25 (highway)\\
+Time headway & front-to-front time gap to the leader & s & 0.8 to 4\\
+Gap / clearance & bumper-to-bumper distance to the nearest agent & m & 0 to 50\\
+Time-to-collision (TTC) & gap divided by closing speed & s & 0.5 to 10 (critical $<1.5$)\\
+Collision events & contacts of the ego, by actor type & events/km & 0 to 5\\
+Lane deviation & lateral offset of the ego from the lane centre & m & 0 to 1.75 (lane invasion beyond)\\
+Longitudinal acceleration & ego $a_x$ & m/s$^2$ & $-8$ to $+3$\\
+Lateral acceleration & ego $a_y$ (comfort bound 2.5) & m/s$^2$ & 0 to 4\\
+Jerk & time derivative of $a_x$ & m/s$^3$ & 0 to 10\\
+Route completion & fraction of the planned route driven & \% & 0 to 100\\
+Driving score & Bench2Drive composite of completion and infractions & 0 to 100 & 80 to 95 for strong planners\\
+Pedestrian wait & time a pedestrian waits before crossing & s & 0 to 30\\
+Signal phase & current state and time in phase per light & \{R,Y,G\}, s & 10 to 60\\
+Sensor latency & tick-to-availability delay of a measurement & ms & 0 (sync) to 50\\
+\bottomrule\end{tabularx}
+\caption{Key performance variables of the system with units and the ranges observed in the twin.}\label{tab:kpv}\end{table}
+
+\section{Temporal and spatial scales}
+\begin{table}[H]\small\centering
+\begin{tabularx}{\linewidth}{@{}p{3.6cm} p{5.6cm} X@{}}\toprule
+\textbf{Scale} & \textbf{Value} & \textbf{Why it matters}\\\midrule
+Simulation tick & 0.05\,s (20\,Hz), lock-step & physics and every sensor advance together; nothing is lost between ticks\\
+Policy step & 0.1\,s (10\,Hz) & rate at which traffic controllers observe and act\\
+Replanning horizon & 0.5\,s plan interval, 5.2 to 8\,s look-ahead & interaction behaviour evolves on this scale\\
+Signal cycle & 10 to 60\,s & slowest periodic process on the site\\
+Episode / monitoring window & 60 to 300\,s & long enough for several junction passages and interactions\\
+Build time of a site & about 60\,s & the twin can be regenerated per site, not hand-built\\\midrule
+Lane width & 3.5\,m & resolution needed to judge lane keeping\\
+Vehicle footprint & 4 to 5\,m $\times$ 1.9\,m & collision geometry\\
+Perception range & 50 to 100\,m (radar 100, LiDAR 80, cameras limited by occlusion) & how far ahead interactions are observable\\
+Rasterised map cell & 0.5\,m/px, 112\,m window & what the learned controllers see\\
+Site extent & 240 to 560\,m (real sites), 305 to 1009\,m (towns) & monitoring area; all in one frame\\
+Geo-registration error & $<5$\,m (satellite vs OSM vs lanes) & bound on where the twin and the real site disagree\\
+\bottomrule\end{tabularx}
+\caption{Temporal and spatial scales that govern evolution and the monitoring interval.}\label{tab:scales}\end{table}
+
+\section{Hand-over to Parts 2.2 and 2.3}\label{sec:handover}
+Every stream below is produced by the twin today; the scripts that generated the figures of this document are the acquisition code and are listed so the next parts can reuse the exact rates and resolutions.
+\begin{multicols}{2}\small
+\begin{itemize}
+\item \textbf{RGB camera}: 1280$\times$720, FOV 90$^\circ$, 20\,Hz, 8-bit BGRA. Optional lens distortion, motion blur, exposure model.
+\item \textbf{Depth camera}: same geometry, per-pixel metric depth (24-bit, 0 to 1000\,m).
+\item \textbf{Semantic / instance segmentation}: same geometry, one class or object id per pixel (28 classes).
+\item \textbf{LiDAR}: 64 channels, 80\,m, 1.3\,M points/s, 20\,Hz, $(x,y,z,\text{intensity})$ float32; noise std, drop-off and atmospheric attenuation configurable.
+\item \textbf{Radar}: 60$^\circ\times$20$^\circ$, 100\,m, 20\,Hz, per detection (radial velocity, azimuth, elevation, range).
+\item \textbf{GNSS}: latitude, longitude, altitude at 20\,Hz; bias and Gaussian noise per axis configurable.
+\item \textbf{IMU}: accelerometer, gyroscope, compass at 20\,Hz; noise and bias configurable.
+\item \textbf{Contact sensors}: collision events (other actor, impulse) and lane-invasion events (marking type crossed).
+\item \textbf{Ground truth}: every actor's pose, velocity, acceleration, bounding box and type each tick; traffic-light states; the OpenDRIVE lane graph.
+\item \textbf{Scripts}: \texttt{sensor\_sheet.py} (all of the above at one tick), \texttt{geo\_scenes/aerial.py}, \texttt{geo\_scenes/photo.py}, \texttt{rig\_schematic.py}.
+\end{itemize}
+\end{multicols}
+\vspace{-6pt}\noindent For Part~2.3 the natural ``data owner'' split is: sensing team (camera, LiDAR, radar), localisation team (GNSS, IMU), scenario team (ground truth, signals, learned traffic), site team (geo-registration and map).
+\end{document}

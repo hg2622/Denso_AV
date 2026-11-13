@@ -25,6 +25,8 @@
 /geo_scenes/__pycache__/
 /mall_of_america/**/preview.png
 /denso_presentaiton/**/*.png
+/denso_presentaiton/**/*.pdf
+/denso_presentaiton/**/*.mp4
 /routes_lb1/*.json
 /third_party_patches/**/__pycache__/
 /npc_tracks/*.png

@@ -38,6 +38,7 @@ ap.add_argument('--samples', type=int, default=5, help='diffusion samples per pl
 ap.add_argument('--stride', type=int, default=1, help='diffusion step stride (4 = 25 denoising steps instead of 100)')
 ap.add_argument('--replan', type=int, default=5, help='model steps (0.1 s) between plans')
 ap.add_argument('--seed', type=int, default=0)
+ap.add_argument('--weather', default='clear_noon', help='clear_noon | clear_sunset | cloudy_noon | wet_noon | keep (inherit the server\'s)')
 ap.add_argument('--test', type=float, default=0.0, help='headless: ego on autopilot for N seconds, then print stats')
 ap.add_argument('--record', default='', help='write the window to this mp4')
 ap.add_argument('--snapshot', default='', help='save window frames to this prefix every 5 s')
@@ -60,6 +61,10 @@ st = world.get_settings(); st.synchronous_mode = True; st.fixed_delta_seconds = 
 tm = client.get_trafficmanager(a.port + 6000); tm.set_synchronous_mode(True); tm.set_random_device_seed(a.seed)
 tm.global_percentage_speed_difference(-10.0)
 for act in world.get_actors().filter('vehicle.*'): act.destroy()
+# a freshly loaded town keeps whatever weather the previous run left (a night sky makes videos unusable)
+if a.weather != 'keep':
+    _W = {'clear_noon': 'ClearNoon', 'clear_sunset': 'ClearSunset', 'cloudy_noon': 'CloudyNoon', 'wet_noon': 'WetNoon'}
+    world.set_weather(getattr(carla.WeatherParameters, _W[a.weather]))
 world.tick()
 
 # ------------------------------------------------------------------ map -> lane graph + drivable raster (model frame)
@@ -266,6 +271,10 @@ def apply_plans():
         if sp > vmax: vx, vy = vx / sp * vmax, vy / sp * vmax
         dyaw = (tyaw_deg - cyaw_deg + 180.0) % 360.0 - 180.0; wz = max(-120.0, min(120.0, dyaw / DT))
         v.set_target_velocity(carla.Vector3D(vx, vy, v.get_velocity().z)); v.set_target_angular_velocity(carla.Vector3D(0.0, 0.0, wz))
+        # how far the car is from where THIS step of the plan said it would be (plan[k] is "now")
+        if os.environ.get('CTG_TRACK_ERR'):
+            wx, wy, _ = (float(q) for q in plan[k]); gx, gy, _ = to_carla(wx, wy, 0)
+            track_err.append(math.hypot(tf.location.x - gx, tf.location.y - gy))
         c['k'] = k + 1
         if v.id == (last_scene[trouble_idx - 1].id if (trouble_idx and trouble_idx - 1 < len(last_scene)) else -1): col = carla.Color(80, 4, 4)
         else: col = carla.Color(6, 20, 60)
@@ -301,6 +310,7 @@ if a.record:
     fourcc = cv2.VideoWriter_fourcc(*'mp4v'); writer = cv2.VideoWriter(a.record, fourcc, 10.0, (Wn, Hn))
 
 # ------------------------------------------------------------------ loop
+track_err = []
 steer = 0.0; ctl = carla.VehicleControl(); clock = pygame.time.Clock(); tick = 0; t_start = time.time(); ms_last = 100; tumble_max = 0; tumble_ticks = 0
 try:
     while True:
@@ -348,7 +358,8 @@ except Exception:
     import traceback; traceback.print_exc()
 finally:
     print(f'\n=== {tick * DT:.0f} s simulated in {time.time() - t_start:.0f} s wall; {n_plans} plans, mean latency {np.mean(plan_lat) if plan_lat else 0:.2f}s; '
-          f'ego collisions: {len(collisions)} {[c[1] for c in collisions][:6]}; NPCs tumbled (roll/pitch > 45 deg): max {tumble_max} at once, {tumble_ticks} s with any', flush=True)
+          + (f'mean tracking error {np.mean(track_err):.2f} m (max {np.max(track_err):.2f}); ' if track_err else '')
+          + f'ego collisions: {len(collisions)} {[c[1] for c in collisions][:6]}; NPCs tumbled (roll/pitch > 45 deg): max {tumble_max} at once, {tumble_ticks} s with any', flush=True)
     if writer is not None: writer.release(); print('video:', a.record)
     for c in cams:
         try: c.stop(); c.destroy()
