@@ -21,7 +21,7 @@
 \noindent\textbf{Scope.} The physical system is one electric vehicle in SAE Level~2 supervised driving, with its driver and everything within its roughly 100\,m perception range (Deliverable~1). Three coupled states describe it: the \emph{driver} (where the eyes are, whether the hands are on the wheel, how alert), the \emph{vehicle} (speed, inputs, automation mode) and the \emph{environment} (traffic, pedestrians, road, weather). Safety depends on the match between the attention the driver supplies and the attention the scene demands. The twin estimates both and acts on the gap. Driver and vehicle states come from the car's own sensors; environment state comes from exterior perception on the road and, for development and calibration, from CARLA, where every agent's position is known exactly. The CARLA figures here show what the twin measures and why context changes the meaning of a glance.
 
 \section{System layout and spatial relationships}
-Figure~\ref{fig:layout} shows the geometry. In the cabin, one infrared camera at the rear-view mirror observes the driver's face and eyes from about 0.6\,m, a torque sensor in the steering column senses hands on the wheel, and seat and belt switches confirm occupancy. The vehicle's own state is read from the CAN bus. Outside, eight cameras and the perception stack see other road users, lanes and signals out to about 100\,m, the scale at which a pedestrian 18\,m ahead or a car closing at 2\,s headway is distinguishable from an empty road. Figure~\ref{fig:driver} is the driver's view with the gaze zones a cabin camera classifies, Figure~\ref{fig:scene} the environment state around the car at one moment, and Figure~\ref{fig:coupling} how the three states couple into the decisions.
+Figure~\ref{fig:layout} shows the geometry. In the cabin, one infrared camera at the rear-view mirror observes the driver's face and eyes from 0.6 to 0.8\,m, a torque sensor in the steering column senses hands on the wheel, and seat and belt switches confirm occupancy. The vehicle's own state is read from the CAN bus. Outside, eight cameras and the perception stack see other road users, lanes and signals out to about 100\,m, the scale at which a pedestrian 18\,m ahead or a car closing at 2\,s headway is distinguishable from an empty road. Figure~\ref{fig:driver} is the driver's view with the gaze zones a cabin camera classifies, Figure~\ref{fig:scene} the environment state around the car at one moment, and Figure~\ref{fig:coupling} how the three states couple into the decisions.
 
 \begin{figure}[H]\centering\includegraphics[width=\linewidth]{layout.png}
 \caption{Layout of the physical system. Left: the vehicle and the environment within its perception range, with the quantity measured for each road user. Right: the cabin and vehicle sensing points.}\label{fig:layout}\end{figure}
@@ -105,7 +105,7 @@ Alert escalation & 1 to 10\,s, context-dependent & fast-loop window\\
 Trip & minutes to hours & drowsiness builds; trip summary\\
 Score window & 30 days rolling & slow loop; mirrors Tesla's window\\
 Fleet recalibration & months & weights and thresholds revised\\\midrule
-Cabin & about 1\,m camera to face & gaze-estimation geometry\\
+Cabin & 0.6 to 0.8\,m camera to face & gaze-estimation geometry\\
 Vehicle & 4.7\,$\times$\,1.85\,m & own footprint for gaps\\
 Lane & 3.5\,m & lane-position variation\\
 Perception range & about 100\,m (4\,s at 90\,km/h) & how early demand is visible\\
