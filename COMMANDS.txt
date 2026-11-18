@@ -482,6 +482,31 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
     local patches (third_party_patches/RIFT): manual keyboard ego, natten rpb layer reimplemented (new natten dropped it), torch.load
       weights_only, route_parser/getchildren, video guard, RIFT_* env knobs, 'human' selection profile in rule.yaml, speed limits Town13/15.
 
+  §17 QCNet (ZikangZhou/QCNet, CVPR'23 "Query-Centric Trajectory Prediction"; code ~/carla_ws/QCNet unmodified, env qcnet py3.10, adapter qcnet_carla/)
+    What it is: a multi-agent TRAJECTORY PREDICTOR (not a controller): from each agent's last 5 s and the HD map it predicts 6 possible
+    6 s futures per agent with probabilities, jointly for every agent in the scene (query-centric transformer, Argoverse 2 weights:
+    ckpt/QCNet_AV2.ckpt, val minADE6 0.72 m / minFDE6 1.25 m). Rank 1 on both Argoverse leaderboards at release.
+    What the adapter does (qcnet_carla/qcnet_model.py): rebuilds the Argoverse heterogeneous graph from CARLA: lane segments = chunks of
+    <= 30 m of every OpenDRIVE driving lane (centre + left/right boundary polylines, CARLA lane-marking types mapped to Argoverse mark
+    types, is_junction), crosswalks from map.get_crosswalks() as the two directed PEDESTRIAN polygons, PRED/SUCC/LEFT/RIGHT edges from
+    waypoint connectivity; agents = every vehicle/pedestrian/bike with history at 10 Hz. Frames: CARLA is left-handed, Argoverse
+    right-handed -> (x, -y, -yaw) both ways. The repo's TargetBuilder transform predates the current PyG API, so the target tensor
+    is set inline (the forward pass never reads it).
+    VIDEO (normal traffic, ground truth vs prediction):
+      bash carla_server.sh &   then
+      ~/miniconda3/envs/qcnet/bin/python qcnet_carla/qcnet_carla.py --out selected_runs/qcnet/qcnet_traffic_town10hd.mp4 --seconds 80 [--town Town10HD
+          --vehicles 40 --walkers 30 --seed 2 --view 60 --stride 1 --modes 6]
+      runs Traffic-Manager traffic + pedestrians at 10 Hz, logs every agent, then predicts offline at every step and renders a bird's-eye
+      video: green = what the agent actually did in the next 6 s, red thick = most likely predicted mode, red thin = the other 5 modes,
+      grey = last 5 s, light blue = crosswalks. Running minADE6 / minFDE6 (best of 6 modes, agents with a full 6 s future) in the HUD.
+      Result Town10HD, 80 s, 41 vehicles + 28 pedestrians, 10,368 agent-predictions: minADE6 0.75 m, minFDE6 1.52 m, 110 ms per frame
+      (~20 agents, ~250 map polygons). Close to its Argoverse numbers, so the map/agent conversion is faithful. The single most likely
+      mode is often wrong at branches (as on Argoverse: minFDE1 4.3 m vs minFDE6 1.25 m); the mode SET brackets the truth.
+    Use: a prediction network like this is what an ego planner (or the attention twin's "scene demand" estimate) would run on the road;
+      in CARLA we can score it against exact futures. It does not drive anyone: pair it with RIFT/CTG++/TM for the traffic itself.
+    env qcnet: torch 2.8+cu128, torchvision 0.23, torch_geometric 2.8.1 + torch_scatter/torch_cluster wheels (data.pyg.org, torch-2.8.0+cu128),
+      pytorch-lightning 2.4, carla 0.9.15 (freeze: env/requirements_qcnet_full.txt). Checkpoint from the README's Google Drive link (gdown).
+
   §16 CTG++ (NVlabs/CTG, "Language-Guided Traffic Simulation via Scene-Level Diffusion"; code ~/carla_ws/CTG, env ctg, adapter ctg_carla/)
     What it is: a scene-level diffusion model (nuScenes-trained, 3.1 s history -> 5.2 s joint future for every car in the scene) whose
     sampling is steered by differentiable GUIDANCE LOSSES at every denoising step: collision avoidance, stay on the road, target speed,

@@ -1,0 +1,2 @@
+url: https://github.com/ZikangZhou/QCNet.git
+commit: 55cacb418cbbce3753119c1f157360e66993d0d0
