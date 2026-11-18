@@ -515,6 +515,15 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       always includes "stay in lane" and "complete the lane change", with the probability mass moving between them as the car's lateral
       velocity flips; a 3 s weave is faster than anything in Argoverse, so the top mode lags one swing behind and the green line sits
       between two ghosts rather than on one. The drift car is handled better: half a lane of lateral motion keeps "stay" as the top mode.
+    PREDICTING RIFT (learned NPCs):  1) log a free-roam run:
+        bash rift_freeroam.sh rift_pluto --aggressive --fast --town Town05 --ego autopilot --test 90 --log selected_runs/rift/rift5.npz
+      (--log writes every tick: all vehicle poses, which are under the policy, and the policy's own planned path)   2) predict it:
+        ~/miniconda3/envs/qcnet/bin/python qcnet_carla/qcnet_on_rift.py --log selected_runs/rift/rift5.npz --out selected_runs/qcnet/qcnet_on_rift_town05.mp4
+      Video: orange bold cars = under the RIFT policy, orange dashed = the policy's own plan (its intent), red = QCNet modes by probability,
+      green = what happened. Result (Town05 ring, 5 policy cars, 90 s): QCNet minADE6/minFDE6 = 2.46 / 4.71 m on the Traffic-Manager cars
+      but 4.72 / 7.88 m on the RIFT cars (vs 0.75 / 1.52 m in normal city traffic). The learned adversaries are twice as hard to predict as
+      rule-based traffic, and the policy's dashed plan often diverges from both the prediction and the outcome, since it replans every 0.1 s.
+      This is the setup for an ego planner or the attention twin: a prediction net scoring how surprising the traffic around the ego is.
     Videos: selected_runs/qcnet/qcnet_traffic_town10hd_prob.mp4 (probability-shaded modes), qcnet_traffic_town10hd.mp4 (top mode thick).
     env qcnet: torch 2.8+cu128, torchvision 0.23, torch_geometric 2.8.1 + torch_scatter/torch_cluster wheels (data.pyg.org, torch-2.8.0+cu128),
       pytorch-lightning 2.4, carla 0.9.15 (freeze: env/requirements_qcnet_full.txt). Checkpoint from the README's Google Drive link (gdown).

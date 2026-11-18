@@ -47,6 +47,7 @@ ap.add_argument('--aggressive', action='store_true', help='candidate re-ranking 
 ap.add_argument('--aggr-level', type=int, default=2, choices=[1, 2], help='1 = brutal (ignores the learned avoidance), 2 = mild (habit on, collision-checked)')
 ap.add_argument('--fast', action='store_true', help='Traffic Manager cars and the autopilot ego drive 40%% over the limit with short gaps')
 ap.add_argument('--cam', default='chase', choices=['chase', 'top', 'bonnet'], help='starting camera')
+ap.add_argument('--log', default='', help='write every tick: all vehicle poses/velocities, CBV ids, policy plans to this .npz (for offline prediction)')
 ap.add_argument('--show-routes', action='store_true', help="draw the NPCs' global routes (to their interaction point) in the world")
 ap.add_argument('--show-plans', action='store_true', default=True, help="draw each controlled NPC's planned trajectory (default on; --no-show-plans to disable)")
 ap.add_argument('--no-show-plans', action='store_false', dest='show_plans')
@@ -397,6 +398,13 @@ try:
                 cbv_actions = cbv_policy.get_action([obs], [{'env_id': 0}])['CBVs_actions'][0]
             infer_lat.append(time.time() - t0)
         control_ticks += len(CBVs)
+        if a.log:
+            if tick == 1 or 'rows' not in globals(): rows = []; plan_rows = []
+            for v in [ego] + [x for x in npcs if x.is_alive]:
+                tf = v.get_transform(); vel = v.get_velocity(); e = v.bounding_box.extent
+                rows.append((tick, v.id, tf.location.x, tf.location.y, tf.rotation.yaw, vel.x, vel.y, e.x, e.y, 1 if v.id == ego.id else (2 if v.id in CBVs else 0)))
+            for cid, (pl, _) in plans_by_cbv().items():
+                if pl is not None: plan_rows.append((tick, cid, pl[:, 0].astype(np.float32), pl[:, 1].astype(np.float32)))
         el = ego.get_location()
         plans = plans_by_cbv()
         for cid, cbv in CBVs.items():
@@ -443,6 +451,9 @@ finally:
           f'hand-backs {reasons}, closest approach {min_gap:.1f} m, policy latency {np.mean(infer_lat) * 1000 if infer_lat else 0:.0f} ms, '
           f'ego collisions {len(collisions)} {[c[1] for c in collisions][:6]}', flush=True)
     if writer is not None: writer.release(); print('video:', a.record)
+    if a.log and 'rows' in globals():
+        np.savez_compressed(a.log, rows=np.array(rows, dtype=np.float64), plan_tick=np.array([r[0] for r in plan_rows]), plan_id=np.array([r[1] for r in plan_rows]),
+                            plan_x=np.array([r[2] for r in plan_rows]), plan_y=np.array([r[3] for r in plan_rows]), dt=DT); print('log:', a.log, len(rows), 'rows')
     for c in cams:
         try: c.stop(); c.destroy()
         except Exception: pass
