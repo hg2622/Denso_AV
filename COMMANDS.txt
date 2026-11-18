@@ -506,6 +506,15 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       mode is often wrong at branches (as on Argoverse: minFDE1 4.3 m vs minFDE6 1.25 m); the mode SET brackets the truth.
     Use: a prediction network like this is what an ego planner (or the attention twin's "scene demand" estimate) would run on the road;
       in CARLA we can score it against exact futures. It does not drive anyone: pair it with RIFT/CTG++/TM for the traffic itself.
+    FOCUS EXPERIMENT (two scripted cars, empty Town04 highway):  ~/miniconda3/envs/qcnet/bin/python qcnet_carla/qcnet_focus.py
+        --out selected_runs/qcnet/qcnet_focus_highway.mp4 [--view 32 --a-amp 1.6 --a-period 8 --b-period 3 --b-ramp 1.0 --a-speed 17 --b-speed 18]
+      A (front) drifts +-1.6 m toward the neighbour lane and back on an 8 s sine (an undecided lane change); B (rear) does a full lane
+      change left / back / right / back every 3 s with 1 s ramps. Motion is kinematic along the straightest 3-lane stretch, so the ground
+      truth is exact. Result (38 s, 271 predictions each):  A minADE6 1.29 m / minFDE6 2.61 m / top-1 FDE 5.3 m;
+      B minADE6 2.48 m / minFDE6 4.10 m / top-1 FDE 6.0 m  (vs 0.75 / 1.52 m in normal traffic). What the video shows: the mode set
+      always includes "stay in lane" and "complete the lane change", with the probability mass moving between them as the car's lateral
+      velocity flips; a 3 s weave is faster than anything in Argoverse, so the top mode lags one swing behind and the green line sits
+      between two ghosts rather than on one. The drift car is handled better: half a lane of lateral motion keeps "stay" as the top mode.
     Videos: selected_runs/qcnet/qcnet_traffic_town10hd_prob.mp4 (probability-shaded modes), qcnet_traffic_town10hd.mp4 (top mode thick).
     env qcnet: torch 2.8+cu128, torchvision 0.23, torch_geometric 2.8.1 + torch_scatter/torch_cluster wheels (data.pyg.org, torch-2.8.0+cu128),
       pytorch-lightning 2.4, carla 0.9.15 (freeze: env/requirements_qcnet_full.txt). Checkpoint from the README's Google Drive link (gdown).

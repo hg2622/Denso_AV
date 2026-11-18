@@ -74,19 +74,20 @@ class CarlaMapGraph:
             key_to_chunks[key] = ids
         # connectivity
         for key, ids in key_to_chunks.items():
+            if not ids: continue   # a lane sampled by a single waypoint has no chunk
             for a, b in zip(ids[:-1], ids[1:]):
                 self.polys[b]['pred'].append(a); self.polys[a]['succ'].append(b)
             last_wp = self.polys[ids[-1]]['wps'][-1]
             for nxt in last_wp.next(step):
                 nk = (nxt.road_id, nxt.section_id, nxt.lane_id)
-                if nk in key_to_chunks and nk != key:
+                if nk in key_to_chunks and key_to_chunks[nk] and nk != key:
                     j = key_to_chunks[nk][0]; self.polys[ids[-1]]['succ'].append(j); self.polys[j]['pred'].append(ids[-1])
             for i in ids:
                 mid = self.polys[i]['wps'][len(self.polys[i]['wps']) // 2]
                 for side, nb in (('left', mid.get_left_lane()), ('right', mid.get_right_lane())):
                     if nb is None or nb.lane_type != carla.LaneType.Driving or nb.lane_id * mid.lane_id < 0: continue
                     nk = (nb.road_id, nb.section_id, nb.lane_id)
-                    if nk not in key_to_chunks: continue
+                    if not key_to_chunks.get(nk): continue
                     nl = nb.transform.location; best = min(key_to_chunks[nk], key=lambda j: np.min(np.hypot(self.polys[j]['center_c'][:, 0] - nl.x, self.polys[j]['center_c'][:, 1] - nl.y)))
                     self.polys[i][side + '_nb'] = best
         self._crosswalks(cmap)
