@@ -538,6 +538,13 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       overlap fires 6 to 8 false alarms per true one: the fan of 6 modes per car makes some pair touch somewhere nearly always), and
       at 1-2 s the constant-velocity extrapolation is as good or better: a prediction net earns its keep beyond ~3 s, where it catches
       more events with more lead. For a usable alarm, weight overlaps by joint probability and threshold (raise --pmin) instead of "any".
+      VIDEO of the forecasting process:  ~/miniconda3/envs/qcnet/bin/python qcnet_carla/collision_forecast_video.py --log selected_runs/rift/rift5.npz
+        --town Town05 --out selected_runs/qcnet/collision_forecast_rift5_2s.mp4 [--horizon 2 --pmin 0.02]
+      red = predicted modes to +2 s with the predicted box at +2 s; magenta boxes + X = WARNING: the two predicted poses that overlap, where
+      and when (+t s) with the joint probability, dotted lines back to the two cars; black ring = a real contact coming within 2 s and where.
+      A magenta X on a black ring is a hit, alone it is a false alarm; the top-right tally runs through the video. The script prints the
+      first-warning time of every caught event. Result on rift5: 8/9 events caught, first warning 0.6 to 2.0 s before contact;
+      122 warning-steps were hits, 968 false, 43 missed (same precision problem as above: any-mode-pair overlap at pmin 0.02).
     Videos: selected_runs/qcnet/qcnet_traffic_town10hd_prob.mp4 (probability-shaded modes), qcnet_traffic_town10hd.mp4 (top mode thick).
     env qcnet: torch 2.8+cu128, torchvision 0.23, torch_geometric 2.8.1 + torch_scatter/torch_cluster wheels (data.pyg.org, torch-2.8.0+cu128),
       pytorch-lightning 2.4, carla 0.9.15 (freeze: env/requirements_qcnet_full.txt). Checkpoint from the README's Google Drive link (gdown).
