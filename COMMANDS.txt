@@ -452,6 +452,15 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       (random turn at every junction, extended as consumed, regenerated when you leave it), traffic is spawned around you and cars
       that fall behind are moved to lanes ahead, and an NPC that reaches its interaction point / collides / gets stuck is handed
       back to the Traffic Manager (15 s cool-down, then eligible again).
+      AGGRESSIVE MODE:  bash rift_freeroam.sh rift_pluto --aggressive --fast --cam top [--town Town05 --ego autopilot --record X.mp4]
+        The fine-tuning reward has NO closeness term (it rewards lane keeping, 3-20 m/s, and penalises collisions by 20+speed), so a
+        stock RIFT car only competes for the ego's space and yields at the end. --aggressive sets RIFT_AGGRESSIVE=1: the policy's own
+        candidate trajectories are re-ranked by  -RIFT_AGGR_DIST*min_dist_to_ego_future + RIFT_AGGR_SPEED*mean_speed + 2*prob
+        (defaults 1.0 / 0.3; the demo video used 0.7 / 0.6) instead of max probability; the candidate set itself is unchanged.
+        It also switches to the 'aggressive' selection profile (5 NPCs at once, search 100 m, interaction slack 100 m).
+        --fast: Traffic Manager cars and the autopilot ego at 40% over the limit with 2.5 m gaps. --cam top starts top-down (75 m).
+        Expect many NPC-NPC contacts (67 hand-backs on collision in the 120 s demo); that IS the aggression.
+        Demo: selected_runs/rift/rift_aggressive_5cars_bev_town05.mp4 (Town05 ring road, 5 policy cars, 40 TM cars, seed 0).
       SEEING WHAT THE LEARNED WEIGHTS DECIDED: a red dot floats above every car the policy is driving, and a red trail shows
       the trajectory it picked this step (bright = next ~4 s, dim = the rest of the 8 s plan, orange dot = where it expects
       to be in 4 s). --show-candidates also draws, faintly, the other trajectories it chose between; --no-show-plans turns

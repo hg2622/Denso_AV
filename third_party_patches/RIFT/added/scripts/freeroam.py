@@ -38,16 +38,21 @@ ap.add_argument('--npcs', type=int, default=40, help='Traffic-Manager vehicles k
 ap.add_argument('--port', type=int, default=2000); ap.add_argument('--tm_port', type=int, default=8000)
 ap.add_argument('--fps', type=float, default=10.0, help='RIFT policies run at 10 Hz')
 ap.add_argument('--seed', type=int, default=0)
+ap.add_argument('--weather', default='clear_noon', help='clear_noon | clear_sunset | cloudy_noon | wet_noon | keep')
 ap.add_argument('--profile', default='human', help='CBV selection gates: human (wide) | eval (the paper\'s)')
 ap.add_argument('--test', type=float, default=0.0, help='headless: ego on autopilot for N seconds, then print stats')
 ap.add_argument('--record', default='', help='write the window to this mp4')
 ap.add_argument('--snapshot', default='', help='save window frames to this prefix every 5 s')
+ap.add_argument('--aggressive', action='store_true', help='RIFT_AGGRESSIVE=1 candidate re-ranking + the aggressive selection profile (5 NPCs)')
+ap.add_argument('--fast', action='store_true', help='Traffic Manager cars and the autopilot ego drive 40%% over the limit with short gaps')
+ap.add_argument('--cam', default='chase', choices=['chase', 'top', 'bonnet'], help='starting camera')
 ap.add_argument('--show-routes', action='store_true', help="draw the NPCs' global routes (to their interaction point) in the world")
 ap.add_argument('--show-plans', action='store_true', default=True, help="draw each controlled NPC's planned trajectory (default on; --no-show-plans to disable)")
 ap.add_argument('--no-show-plans', action='store_false', dest='show_plans')
 ap.add_argument('--show-candidates', action='store_true', help='also draw the other trajectories the policy chose between (faint)')
 a = ap.parse_args()
 if a.test: os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
+if a.aggressive: os.environ['RIFT_AGGRESSIVE'] = '1'; a.profile = 'aggressive' if a.profile == 'human' else a.profile
 os.environ.setdefault('RIFT_CBV_PROFILE', a.profile)
 
 import carla  # noqa: E402
@@ -80,9 +85,13 @@ world = client.get_world()
 if a.town not in world.get_map().name:
     print(f'loading {a.town} ...', flush=True); world = client.load_world(a.town)
 for act in world.get_actors().filter('vehicle.*'): act.destroy()
+# a freshly loaded town keeps the previous run's weather; a night sky makes recordings unusable
+if a.weather != 'keep':
+    _W = {'clear_noon': 'ClearNoon', 'clear_sunset': 'ClearSunset', 'cloudy_noon': 'CloudyNoon', 'wet_noon': 'WetNoon'}
+    world.set_weather(getattr(carla.WeatherParameters, _W[a.weather]))
 st = world.get_settings(); st.synchronous_mode = True; st.fixed_delta_seconds = DT; st.no_rendering_mode = False; world.apply_settings(st)
 tm = client.get_trafficmanager(a.tm_port); tm.set_synchronous_mode(True); tm.set_random_device_seed(a.seed)
-tm.set_global_distance_to_leading_vehicle(5.0); tm.global_percentage_speed_difference(-10)
+tm.set_global_distance_to_leading_vehicle(2.5 if a.fast else 5.0); tm.global_percentage_speed_difference(-40 if a.fast else -10)
 world.tick()
 cmap = world.get_map()
 CarlaDataProvider.set_client(client); CarlaDataProvider.set_world(world, a.town)
@@ -205,7 +214,7 @@ def free_slots(center_wp, dist_min, dist_max, n, margin=10.0):
 pts = free_slots(cmap.get_waypoint(ego.get_location()), 15.0, 160.0, a.npcs)
 npcs = [v for v in CarlaDataProvider.request_new_batch_actors('vehicle.*', len(pts), pts, autopilot=True, rolename='background', safe_blueprint=True) if v is not None]
 CarlaDataProvider.set_scenario_actors(ego, npcs)
-for v in npcs: tm.vehicle_percentage_speed_difference(v, float(rng.uniform(-20, 10)))
+for v in npcs: tm.vehicle_percentage_speed_difference(v, float(rng.uniform(-50, -30) if a.fast else rng.uniform(-20, 10)))
 print(f'>> ego + {len(npcs)} Traffic-Manager vehicles spawned around it', flush=True)
 
 def recycle_far_npcs(max_dist=170.0):
@@ -326,8 +335,8 @@ cs = world.spawn_actor(CarlaDataProvider._blueprint_library.find('sensor.other.c
 
 Wn, Hn = 1280, 720; img = {}
 pygame.init(); screen = pygame.display.set_mode((Wn, Hn)); pygame.display.set_caption(f'RIFT free roam - {a.cbv} drives the NPCs'); font = pygame.font.SysFont('monospace', 17, bold=True)
-CAMS = [('chase', carla.Location(x=-7, z=3.2), carla.Rotation(pitch=-12)), ('top', carla.Location(z=45), carla.Rotation(pitch=-90)), ('bonnet', carla.Location(x=0.8, z=1.3), carla.Rotation())]
-cams = []; cam_idx = 0
+CAMS = [('chase', carla.Location(x=-7, z=3.2), carla.Rotation(pitch=-12)), ('top', carla.Location(z=75), carla.Rotation(pitch=-90)), ('bonnet', carla.Location(x=0.8, z=1.3), carla.Rotation())]
+cams = []; cam_idx = ['chase', 'top', 'bonnet'].index(a.cam)
 def attach_cam():
     global cams
     for c in cams:

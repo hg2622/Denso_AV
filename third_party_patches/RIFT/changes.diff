@@ -59,10 +59,18 @@ index a54931b..6e2341c 100644
  
          self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 diff --git a/rift/cbv/planning/pluto/pluto.py b/rift/cbv/planning/pluto/pluto.py
-index be9f999..2fbf637 100644
+index be9f999..82da2ac 100644
 --- a/rift/cbv/planning/pluto/pluto.py
 +++ b/rift/cbv/planning/pluto/pluto.py
-@@ -128,12 +128,12 @@ class PLUTO(CBVBasePolicy):
+@@ -4,6 +4,7 @@
+ @File    : pluto.py
+ @Date    : 2024/10/24
+ '''
++import os
+ from collections import defaultdict
+ import torch
+ import numpy as np
+@@ -128,12 +129,12 @@ class PLUTO(CBVBasePolicy):
          return self._render_data[env_id]
  
      def load_infer_checkpoint(self, checkpoint: str, device_name: str):
@@ -77,6 +85,37 @@ index be9f999..2fbf637 100644
          return ckpt['state_dict']
  
      def load_model(self, resume=True):
+@@ -244,6 +245,30 @@ class PLUTO(CBVBasePolicy):
+             axis=-2,
+         )
+ 
++        # RIFT_AGGRESSIVE=1 (local addition): re-rank the model's own candidates so the chosen one closes in on the ego
++        # and keeps speed, instead of the most probable one. The candidate set is unchanged (still the planner's output),
++        # only the pick differs. RIFT_AGGR_DIST / RIFT_AGGR_SPEED weight closeness [1/m] and mean speed [1/(m/s)].
++        if os.environ.get('RIFT_AGGRESSIVE') == '1':
++            try:
++                ego = CarlaDataProvider.get_ego_vehicle_by_env_id(0)
++                es = CarlaDataProvider.get_current_state(ego)
++                if es is not None:
++                    ex, ey, eh = es.center.x, es.center.y, es.center.heading
++                    vl = es.dynamic_car_state.center_velocity_2d
++                    vx, vy = vl.x * np.cos(eh) - vl.y * np.sin(eh), vl.x * np.sin(eh) + vl.y * np.cos(eh)
++                    T = sorted_candidate_trajectories.shape[-2]
++                    tt = np.arange(T) * self._step_interval
++                    ego_future = np.stack([ex + vx * tt, ey + vy * tt], -1)                       # (T, 2), constant velocity
++                    d = np.linalg.norm(sorted_candidate_trajectories[..., :2] - ego_future[None], axis=-1)   # (K, T)
++                    min_d = d.min(-1)
++                    step = np.linalg.norm(np.diff(sorted_candidate_trajectories[..., :2], axis=-2), axis=-1)
++                    mean_speed = step.mean(-1) / self._step_interval
++                    w_d = float(os.environ.get('RIFT_AGGR_DIST', '1.0')); w_v = float(os.environ.get('RIFT_AGGR_SPEED', '0.3'))
++                    score = -w_d * min_d + w_v * mean_speed + 2.0 * sorted_probability
++                    sorted_probability = softmax(score)   # argmax downstream now picks the aggressive candidate
++            except Exception as e:
++                print(f'[RIFT_AGGRESSIVE] re-ranking skipped: {e}', flush=True)
++
+         return sorted_candidate_trajectories, sorted_probability, sorted_orig_indices, n_ref, n_mode
+ 
+     def get_control(self, env_id, CBV_id, center_state: CarlaAgentState, local_trajectory: np.ndarray) -> Tuple[float, float, float]:
 diff --git a/rift/cbv/planning/rl/ppo.py b/rift/cbv/planning/rl/ppo.py
 index e43ab75..400a405 100644
 --- a/rift/cbv/planning/rl/ppo.py
@@ -148,14 +187,13 @@ index 54a5b97..5eabcf5 100644
          # If the maximum number of CBVs is already selected, return an empty list
          if len(CBVs_id) >= self.max_agent_num:
 diff --git a/rift/cbv/recognition/config/rule.yaml b/rift/cbv/recognition/config/rule.yaml
-index 3d2e2bd..c2e40ae 100644
+index 3d2e2bd..e2ace51 100644
 --- a/rift/cbv/recognition/config/rule.yaml
 +++ b/rift/cbv/recognition/config/rule.yaml
-@@ -28,4 +28,20 @@ eval:
+@@ -28,4 +28,36 @@ eval:
    max_agent_num: 2
    down_sample_step: 4
  
--
 +# Profile for a HUMAN-driven ego (rift_drive.sh). The eval numbers above are tuned for a model that drives at a steady,
 +# confident pace: a candidate only qualifies if its path length to an interaction point is within
 +# min_interaction_dis_diff of the ego's, so a person who slows down, looks around or drives cautiously falls outside
@@ -172,6 +210,22 @@ index 3d2e2bd..c2e40ae 100644
 +  max_route_len: 400
 +  max_ego_route_len: 80         # consider more of the ego's remaining route (was 50)
 +  max_agent_num: 4              # up to 4 adversaries at once (was 2)
++  down_sample_step: 4
+ 
++# Profile for an AGGRESSIVE multi-car demo (rift_freeroam.sh --aggressive): five NPCs at once, candidates found far out
++# and with a very loose arrival-distance gate so the pool never runs dry. Pair with RIFT_AGGRESSIVE=1 (candidate re-ranking).
++aggressive:
++  spawn_radius: 50
++  traffic_intensity: 0.8
++  activate_radius: 150
++  coord_interval: 60
++  search_radius: 100
++  max_interaction_fov: 180
++  max_interaction_dis: 130
++  min_interaction_dis_diff: 100
++  max_route_len: 400
++  max_ego_route_len: 100
++  max_agent_num: 5
 +  down_sample_step: 4
 diff --git a/rift/ego/__init__.py b/rift/ego/__init__.py
 index af506ba..c818d5d 100644
