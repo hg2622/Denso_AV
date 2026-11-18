@@ -59,7 +59,7 @@ index a54931b..6e2341c 100644
  
          self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 diff --git a/rift/cbv/planning/pluto/pluto.py b/rift/cbv/planning/pluto/pluto.py
-index be9f999..82da2ac 100644
+index be9f999..297a155 100644
 --- a/rift/cbv/planning/pluto/pluto.py
 +++ b/rift/cbv/planning/pluto/pluto.py
 @@ -4,6 +4,7 @@
@@ -85,31 +85,51 @@ index be9f999..82da2ac 100644
          return ckpt['state_dict']
  
      def load_model(self, resume=True):
-@@ -244,6 +245,30 @@ class PLUTO(CBVBasePolicy):
+@@ -244,6 +245,50 @@ class PLUTO(CBVBasePolicy):
              axis=-2,
          )
  
-+        # RIFT_AGGRESSIVE=1 (local addition): re-rank the model's own candidates so the chosen one closes in on the ego
-+        # and keeps speed, instead of the most probable one. The candidate set is unchanged (still the planner's output),
-+        # only the pick differs. RIFT_AGGR_DIST / RIFT_AGGR_SPEED weight closeness [1/m] and mean speed [1/(m/s)].
-+        if os.environ.get('RIFT_AGGRESSIVE') == '1':
++        # RIFT_AGGRESSIVE (local addition): re-rank the planner's own candidates instead of taking the most probable one.
++        #   level 1  brutal: score = -RIFT_AGGR_DIST*min_dist_to_ego_future + RIFT_AGGR_SPEED*mean_speed + 2*prob over ALL candidates
++        #   level 2  mild (habit on): only candidates with prob >= RIFT_AGGR_KEEP * max prob are eligible, a constant-velocity
++        #            collision check against every nearby agent drops the ones that get within RIFT_AGGR_CLEAR metres, and the
++        #            survivor with the best  log prob + RIFT_AGGR_SPEED*mean_speed - RIFT_AGGR_DIST*min_dist_to_ego  wins.
++        # The candidate set itself is unchanged in both levels.
++        level = os.environ.get('RIFT_AGGRESSIVE', '0')
++        if level in ('1', '2'):
 +            try:
 +                ego = CarlaDataProvider.get_ego_vehicle_by_env_id(0)
 +                es = CarlaDataProvider.get_current_state(ego)
 +                if es is not None:
-+                    ex, ey, eh = es.center.x, es.center.y, es.center.heading
-+                    vl = es.dynamic_car_state.center_velocity_2d
-+                    vx, vy = vl.x * np.cos(eh) - vl.y * np.sin(eh), vl.x * np.sin(eh) + vl.y * np.cos(eh)
++                    def future(st, T):
++                        x, y, h = st.center.x, st.center.y, st.center.heading; vl = st.dynamic_car_state.center_velocity_2d
++                        vx, vy = vl.x * np.cos(h) - vl.y * np.sin(h), vl.x * np.sin(h) + vl.y * np.cos(h)
++                        tt = np.arange(T) * self._step_interval; return np.stack([x + vx * tt, y + vy * tt], -1)
 +                    T = sorted_candidate_trajectories.shape[-2]
-+                    tt = np.arange(T) * self._step_interval
-+                    ego_future = np.stack([ex + vx * tt, ey + vy * tt], -1)                       # (T, 2), constant velocity
-+                    d = np.linalg.norm(sorted_candidate_trajectories[..., :2] - ego_future[None], axis=-1)   # (K, T)
-+                    min_d = d.min(-1)
++                    ego_future = future(es, T)
++                    min_d = np.linalg.norm(sorted_candidate_trajectories[..., :2] - ego_future[None], axis=-1).min(-1)
 +                    step = np.linalg.norm(np.diff(sorted_candidate_trajectories[..., :2], axis=-2), axis=-1)
 +                    mean_speed = step.mean(-1) / self._step_interval
-+                    w_d = float(os.environ.get('RIFT_AGGR_DIST', '1.0')); w_v = float(os.environ.get('RIFT_AGGR_SPEED', '0.3'))
-+                    score = -w_d * min_d + w_v * mean_speed + 2.0 * sorted_probability
-+                    sorted_probability = softmax(score)   # argmax downstream now picks the aggressive candidate
++                    w_d = float(os.environ.get('RIFT_AGGR_DIST', '1.0' if level == '1' else '0.15'))
++                    w_v = float(os.environ.get('RIFT_AGGR_SPEED', '0.3' if level == '1' else '0.4'))
++                    if level == '1':
++                        score = -w_d * min_d + w_v * mean_speed + 2.0 * sorted_probability
++                    else:
++                        keep = float(os.environ.get('RIFT_AGGR_KEEP', '0.3')); clear = float(os.environ.get('RIFT_AGGR_CLEAR', '2.5'))
++                        eligible = sorted_probability >= keep * sorted_probability.max()
++                        # collision check against the neighbours' constant-velocity futures (first 4 s), excluding the ego itself
++                        cx, cy = ego_state.center.x, ego_state.center.y; Tc = min(T, int(4.0 / self._step_interval))
++                        for actor_id, actor in list(CarlaDataProvider.get_actors().items()):
++                            if actor is None or actor_id == ego.id: continue
++                            st = CarlaDataProvider.get_current_state(actor)
++                            if st is None or abs(st.center.x - cx) + abs(st.center.y - cy) < 0.5 or np.hypot(st.center.x - cx, st.center.y - cy) > 60: continue
++                            of = future(st, Tc)
++                            dmin = np.linalg.norm(sorted_candidate_trajectories[:, :Tc, :2] - of[None], axis=-1).min(-1)
++                            eligible &= dmin > clear
++                        if not eligible.any(): eligible = sorted_probability >= keep * sorted_probability.max()
++                        score = np.log(sorted_probability + 1e-6) + w_v * mean_speed - w_d * min_d
++                        score = np.where(eligible, score, -1e9)
++                    sorted_probability = softmax(score)   # argmax downstream now picks the re-ranked candidate
 +            except Exception as e:
 +                print(f'[RIFT_AGGRESSIVE] re-ranking skipped: {e}', flush=True)
 +

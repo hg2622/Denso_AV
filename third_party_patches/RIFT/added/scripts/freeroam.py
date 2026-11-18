@@ -43,7 +43,8 @@ ap.add_argument('--profile', default='human', help='CBV selection gates: human (
 ap.add_argument('--test', type=float, default=0.0, help='headless: ego on autopilot for N seconds, then print stats')
 ap.add_argument('--record', default='', help='write the window to this mp4')
 ap.add_argument('--snapshot', default='', help='save window frames to this prefix every 5 s')
-ap.add_argument('--aggressive', action='store_true', help='RIFT_AGGRESSIVE=1 candidate re-ranking + the aggressive selection profile (5 NPCs)')
+ap.add_argument('--aggressive', action='store_true', help='candidate re-ranking toward the ego + the aggressive selection profile (5 NPCs)')
+ap.add_argument('--aggr-level', type=int, default=2, choices=[1, 2], help='1 = brutal (ignores the learned avoidance), 2 = mild (habit on, collision-checked)')
 ap.add_argument('--fast', action='store_true', help='Traffic Manager cars and the autopilot ego drive 40%% over the limit with short gaps')
 ap.add_argument('--cam', default='chase', choices=['chase', 'top', 'bonnet'], help='starting camera')
 ap.add_argument('--show-routes', action='store_true', help="draw the NPCs' global routes (to their interaction point) in the world")
@@ -52,7 +53,7 @@ ap.add_argument('--no-show-plans', action='store_false', dest='show_plans')
 ap.add_argument('--show-candidates', action='store_true', help='also draw the other trajectories the policy chose between (faint)')
 a = ap.parse_args()
 if a.test: os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
-if a.aggressive: os.environ['RIFT_AGGRESSIVE'] = '1'; a.profile = 'aggressive' if a.profile == 'human' else a.profile
+if a.aggressive: os.environ['RIFT_AGGRESSIVE'] = str(a.aggr_level); a.profile = 'aggressive' if a.profile == 'human' else a.profile
 os.environ.setdefault('RIFT_CBV_PROFILE', a.profile)
 
 import carla  # noqa: E402

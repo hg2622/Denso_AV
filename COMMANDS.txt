@@ -452,15 +452,22 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       (random turn at every junction, extended as consumed, regenerated when you leave it), traffic is spawned around you and cars
       that fall behind are moved to lanes ahead, and an NPC that reaches its interaction point / collides / gets stuck is handed
       back to the Traffic Manager (15 s cool-down, then eligible again).
-      AGGRESSIVE MODE:  bash rift_freeroam.sh rift_pluto --aggressive --fast --cam top [--town Town05 --ego autopilot --record X.mp4]
-        The fine-tuning reward has NO closeness term (it rewards lane keeping, 3-20 m/s, and penalises collisions by 20+speed), so a
-        stock RIFT car only competes for the ego's space and yields at the end. --aggressive sets RIFT_AGGRESSIVE=1: the policy's own
-        candidate trajectories are re-ranked by  -RIFT_AGGR_DIST*min_dist_to_ego_future + RIFT_AGGR_SPEED*mean_speed + 2*prob
-        (defaults 1.0 / 0.3; the demo video used 0.7 / 0.6) instead of max probability; the candidate set itself is unchanged.
-        It also switches to the 'aggressive' selection profile (5 NPCs at once, search 100 m, interaction slack 100 m).
+      AGGRESSIVE MODE:  bash rift_freeroam.sh rift_pluto --aggressive [--aggr-level 2|1] --fast --cam top [--town Town05 --record X.mp4]
+        The fine-tuning reward has NO closeness term (lane keeping, 3-20 m/s, collisions penalised by 20+speed), so a stock RIFT car
+        only competes for the ego's space and yields at the end; its collision avoidance lives entirely in the learned candidate
+        probabilities (RIFT dropped Pluto's rule-based collision check). --aggressive re-ranks the planner's OWN candidates (the set
+        is unchanged) and switches to the 'aggressive' selection profile (5 NPCs at once, search 100 m, interaction slack 100 m):
+          level 2 (default, "habit on"): only candidates with prob >= RIFT_AGGR_KEEP(0.3) x max are eligible, a constant-velocity
+            collision check against every agent within 60 m drops those passing within RIFT_AGGR_CLEAR(2.5) m in the next 4 s, and
+            the survivor maximising  log prob + RIFT_AGGR_SPEED(0.4)*mean_speed - RIFT_AGGR_DIST(0.15)*min_dist_to_ego  is driven.
+          level 1 (brutal): score = -RIFT_AGGR_DIST(1.0)*min_dist_to_ego + RIFT_AGGR_SPEED(0.3)*mean_speed + 2*prob over all candidates.
         --fast: Traffic Manager cars and the autopilot ego at 40% over the limit with 2.5 m gaps. --cam top starts top-down (75 m).
-        Expect many NPC-NPC contacts (67 hand-backs on collision in the 120 s demo); that IS the aggression.
-        Demo: selected_runs/rift/rift_aggressive_5cars_bev_town05.mp4 (Town05 ring road, 5 policy cars, 40 TM cars, seed 0).
+        Measured, Town05 ring, 5 policy cars + 40 TM cars, 120 s, seed 0:
+          plain (no --aggressive, 4 cars max)  takeovers 34, NPC-s under policy 451, collision hand-backs 22, closest 3.9 m, ego hit 0
+          level 2                              takeovers 41, NPC-s under policy 568, collision hand-backs 24, closest 2.6 m, ego hit 0
+          level 1                              takeovers 76, NPC-s under policy 513, collision hand-backs 67, closest 3.4 m, ego hit 2
+        Level 1 wrecks the cars into each other because it overrides the learned avoidance; level 2 keeps it and is the usable one.
+        Videos: selected_runs/rift/rift_mild_aggressive_5cars_bev_town05.mp4 (level 2), rift_aggressive_5cars_bev_town05.mp4 (level 1).
       SEEING WHAT THE LEARNED WEIGHTS DECIDED: a red dot floats above every car the policy is driving, and a red trail shows
       the trajectory it picked this step (bright = next ~4 s, dim = the rest of the 8 s plan, orange dot = where it expects
       to be in 4 s). --show-candidates also draws, faintly, the other trajectories it chose between; --no-show-plans turns
