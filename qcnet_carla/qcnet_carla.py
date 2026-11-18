@@ -110,14 +110,21 @@ for k in range(HIST - 1, T - FUT, a.stride):
         cs, sn = math.cos(h), math.sin(h); corners = np.array([[L, Wd], [L, -Wd], [-L, -Wd], [-L, Wd]]) @ np.array([[cs, sn], [-sn, cs]]) + [x, y]
         ax.add_patch(MplPoly(corners, closed=True, fc=col, ec='k', lw=0.6, alpha=0.9, zorder=5))
         hist = log[k - HIST + 1:k + 1, j, :2]; ax.plot(hist[:, 0], hist[:, 1], color='#555', lw=0.8, alpha=0.6, zorder=3)
-        order = np.argsort(-pi[i_])
+        # every mode drawn with opacity = its probability (relative to the agent's most likely mode); a ghost car sits at the
+        # 6 s end of each path with the same opacity, so a faint car = a path the model thinks unlikely
+        order = np.argsort(-pi[i_]); pmax = max(float(pi[i_].max()), 1e-6)
         for m_, mode in enumerate(order[:a.modes]):
-            ax.plot(traj[i_, mode, :, 0], traj[i_, mode, :, 1], color='#e41a1c', lw=2.2 if m_ == 0 else 0.9, alpha=0.95 if m_ == 0 else 0.35, zorder=6 if m_ == 0 else 4)
+            p_ = float(pi[i_, mode]); al = 0.12 + 0.88 * (p_ / pmax)
+            tr = traj[i_, mode]; ax.plot(tr[:, 0], tr[:, 1], color='#e41a1c', lw=1.0 + 1.6 * (p_ / pmax), alpha=al, zorder=4 + (m_ == 0))
+            hd = math.atan2(tr[-1, 1] - tr[-4, 1], tr[-1, 0] - tr[-4, 0]) if np.linalg.norm(tr[-1] - tr[-4]) > 0.3 else h
+            gc, gs = math.cos(hd), math.sin(hd); gcorners = np.array([[L, Wd], [L, -Wd], [-L, -Wd], [-L, Wd]]) @ np.array([[gc, gs], [-gs, gc]]) + tr[-1]
+            ax.add_patch(MplPoly(gcorners, closed=True, fc='#e41a1c', ec='#8b0000', lw=0.5, alpha=0.75 * al, zorder=4))
+            if m_ < 2 and types[j] != 'pedestrian': ax.text(tr[-1, 0], tr[-1, 1] + 1.2, f'{p_ * 100:.0f}%', fontsize=7, color='#8b0000', ha='center', alpha=min(1.0, al + 0.3), zorder=8)
         g = gt[i_]
         if not np.isnan(g[:, 0]).any(): ax.plot(g[:, 0], g[:, 1], color='#2ca02c', lw=2.0, zorder=7); ax.plot(g[-1, 0], g[-1, 1], 'o', color='#2ca02c', ms=4, zorder=7)
     ax.set_xlim(ex - V, ex + V); ax.set_ylim(ey - V, ey + V); ax.set_aspect('equal'); ax.set_xticks([]); ax.set_yticks([])
     ax.text(0.01, 0.985, f'QCNet (Argoverse 2 weights) on CARLA {a.town}   t = {k * DT:5.1f} s   {len(sel)} agents, {npoly} map polygons   inference {np.mean(lat[-10:]) * 1000:.0f} ms', transform=ax.transAxes, va='top', fontsize=11, bbox=dict(fc='white', ec='none', alpha=0.85))
-    ax.text(0.01, 0.955, f'green = actual next 6 s   red thick = most likely predicted mode   red thin = other modes   grey = last 5 s   running minADE6 {np.mean(ade_all) if ade_all else 0:.2f} m  minFDE6 {np.mean(fde_all) if fde_all else 0:.2f} m', transform=ax.transAxes, va='top', fontsize=10, bbox=dict(fc='white', ec='none', alpha=0.85))
+    ax.text(0.01, 0.955, f'green = actual next 6 s   red = predicted modes, opacity = probability (ghost car at each 6 s endpoint, % on the top two)   grey = last 5 s   minADE6 {np.mean(ade_all) if ade_all else 0:.2f} m  minFDE6 {np.mean(fde_all) if fde_all else 0:.2f} m', transform=ax.transAxes, va='top', fontsize=10, bbox=dict(fc='white', ec='none', alpha=0.85))
     fig.canvas.draw(); frame = np.asarray(fig.canvas.buffer_rgba())[:, :, :3]
     frame = cv2.resize(frame, (Wn, Hn)); writer.write(np.ascontiguousarray(frame[:, :, ::-1])); n_frames += 1
     if n_frames % 50 == 0: print(f'  frame {n_frames}  t={k * DT:.1f}s  agents {len(sel)}  minADE6 {np.mean(ade_all):.2f}  minFDE6 {np.mean(fde_all):.2f}  {np.mean(lat) * 1000:.0f} ms', flush=True)

@@ -498,12 +498,15 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
           --vehicles 40 --walkers 30 --seed 2 --view 60 --stride 1 --modes 6]
       runs Traffic-Manager traffic + pedestrians at 10 Hz, logs every agent, then predicts offline at every step and renders a bird's-eye
       video: green = what the agent actually did in the next 6 s, red thick = most likely predicted mode, red thin = the other 5 modes,
-      grey = last 5 s, light blue = crosswalks. Running minADE6 / minFDE6 (best of 6 modes, agents with a full 6 s future) in the HUD.
+      grey = last 5 s, light blue = crosswalks. Each mode's opacity and line width scale with its probability (relative to the agent's
+      top mode) and a ghost car of the same opacity sits at its 6 s endpoint, with the % on the top two: a faint car = an unlikely path.
+      Running minADE6 / minFDE6 (best of 6 modes, agents with a full 6 s future) in the HUD.
       Result Town10HD, 80 s, 41 vehicles + 28 pedestrians, 10,368 agent-predictions: minADE6 0.75 m, minFDE6 1.52 m, 110 ms per frame
       (~20 agents, ~250 map polygons). Close to its Argoverse numbers, so the map/agent conversion is faithful. The single most likely
       mode is often wrong at branches (as on Argoverse: minFDE1 4.3 m vs minFDE6 1.25 m); the mode SET brackets the truth.
     Use: a prediction network like this is what an ego planner (or the attention twin's "scene demand" estimate) would run on the road;
       in CARLA we can score it against exact futures. It does not drive anyone: pair it with RIFT/CTG++/TM for the traffic itself.
+    Videos: selected_runs/qcnet/qcnet_traffic_town10hd_prob.mp4 (probability-shaded modes), qcnet_traffic_town10hd.mp4 (top mode thick).
     env qcnet: torch 2.8+cu128, torchvision 0.23, torch_geometric 2.8.1 + torch_scatter/torch_cluster wheels (data.pyg.org, torch-2.8.0+cu128),
       pytorch-lightning 2.4, carla 0.9.15 (freeze: env/requirements_qcnet_full.txt). Checkpoint from the README's Google Drive link (gdown).
 
