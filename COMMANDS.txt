@@ -524,6 +524,20 @@ Open world (start the server with QUALITY=Low bash ~/carla_ws/carla_server.sh: t
       but 4.72 / 7.88 m on the RIFT cars (vs 0.75 / 1.52 m in normal city traffic). The learned adversaries are twice as hard to predict as
       rule-based traffic, and the policy's dashed plan often diverges from both the prediction and the outcome, since it replans every 0.1 s.
       This is the setup for an ego planner or the attention twin: a prediction net scoring how surprising the traffic around the ego is.
+    COLLISION FORECASTING on a logged run:  ~/miniconda3/envs/qcnet/bin/python qcnet_carla/collision_forecast.py --log selected_runs/rift/rift5.npz
+        --town Town05 [--horizons 1,2,3,4 --pmin 0.02 --out selected_runs/qcnet/collision_forecast_rift5.txt]
+      truth(t) = two vehicles' boxes overlap within H s of t (from the log); predicted(t) = a pair of predicted modes (joint prob >= pmin)
+      overlap at the same future step within H; a constant-velocity extrapolation is scored the same way as the baseline.
+      Result, RIFT run (5 policy cars, 9 first-contact events in 90 s, 8 of them involving a RIFT car):
+        horizon   QCNet  pair-precision / recall / events caught / lead   |  const-velocity precision / recall / caught / lead
+          1 s      0.17 / 0.87 / 78% / 0.86 s                              |  0.53 / 0.85 / 78% / 0.83 s
+          2 s      0.13 / 0.74 / 78% / 1.59 s                              |  0.20 / 0.72 / 78% / 1.46 s
+          3 s      0.10 / 0.65 / 78% / 2.34 s                              |  0.12 / 0.61 / 78% / 1.99 s
+          4 s      0.08 / 0.60 / 89% / 3.01 s                              |  0.09 / 0.54 / 78% / 2.93 s
+      Reading: recall is fine (the collision is inside the mode set 3/4 of the time, 2 s ahead), precision is poor (any-mode-pair
+      overlap fires 6 to 8 false alarms per true one: the fan of 6 modes per car makes some pair touch somewhere nearly always), and
+      at 1-2 s the constant-velocity extrapolation is as good or better: a prediction net earns its keep beyond ~3 s, where it catches
+      more events with more lead. For a usable alarm, weight overlaps by joint probability and threshold (raise --pmin) instead of "any".
     Videos: selected_runs/qcnet/qcnet_traffic_town10hd_prob.mp4 (probability-shaded modes), qcnet_traffic_town10hd.mp4 (top mode thick).
     env qcnet: torch 2.8+cu128, torchvision 0.23, torch_geometric 2.8.1 + torch_scatter/torch_cluster wheels (data.pyg.org, torch-2.8.0+cu128),
       pytorch-lightning 2.4, carla 0.9.15 (freeze: env/requirements_qcnet_full.txt). Checkpoint from the README's Google Drive link (gdown).
